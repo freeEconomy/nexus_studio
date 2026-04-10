@@ -8,14 +8,15 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const MODELS = [
   {
     id: 'gemini',
-    name: 'Gemini 2.5 Flash',
-    provider: 'Google',
+    name: 'Llama 4 Scout',
+    provider: 'Groq',
     color: '#4285f4',
     icon: '🔵',
-    fn: 'query-gemini',
+    fn: 'query-groq',
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
   },
   {
-    id: 'llama',
+    id: 'llama70b',
     name: 'Llama 3.3 70B',
     provider: 'Groq',
     color: '#f59e0b',
@@ -24,22 +25,22 @@ const MODELS = [
     model: 'llama-3.3-70b-versatile',
   },
   {
-    id: 'deepseek',
-    name: 'DeepSeek V3',
+    id: 'llama8b',
+    name: 'Llama 3.1 8B',
     provider: 'Groq',
     color: '#10b981',
     icon: '🟢',
     fn: 'query-groq',
-    model: 'deepseek-r1-distill-llama-70b',
+    model: 'llama-3.1-8b-instant',
   },
   {
-    id: 'gemma',
-    name: 'Gemma 3 27B',
+    id: 'qwen',
+    name: 'Qwen3 32B',
     provider: 'Groq',
     color: '#8b5cf6',
     icon: '🟣',
     fn: 'query-groq',
-    model: 'gemma2-9b-it',
+    model: 'qwen/qwen3-32b',
   },
 ]
 

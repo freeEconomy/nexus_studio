@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { query, model = 'gemini-2.5-flash-preview-04-17' } = await req.json()
+    const { query, model = 'gemini-2.5-flash-lite' } = await req.json()
 
     if (!query) {
       return new Response(JSON.stringify({ error: 'query is required' }), {

@@ -1,0 +1,4 @@
+frontend/dist/
+frontend/node_modules
+supabase/.temp/
+package-lock.json
