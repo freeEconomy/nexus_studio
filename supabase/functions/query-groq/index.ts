@@ -1,6 +1,4 @@
 // supabase/functions/query-groq/index.ts
-// Groq API 호출 Edge Function (Llama, DeepSeek, Gemma 등)
-
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 const corsHeaders = {
@@ -9,16 +7,19 @@ const corsHeaders = {
 }
 
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { query, model = 'llama-3.3-70b-versatile' } = await req.json()
+    const { query, messages, model = 'llama-3.3-70b-versatile' } = await req.json()
 
-    if (!query) {
-      return new Response(JSON.stringify({ error: 'query is required' }), {
+    const messageList = messages && Array.isArray(messages)
+      ? messages
+      : [{ role: 'user', content: query }]
+
+    if (!query && (!messageList || messageList.length === 0)) {
+      return new Response(JSON.stringify({ error: 'query or messages is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -27,18 +28,26 @@ Deno.serve(async (req) => {
     const groqKey = Deno.env.get('GROQ_API_KEY')
     if (!groqKey) throw new Error('GROQ_API_KEY not set')
 
+    const isCompound = model.startsWith('groq/compound')
+
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages: messageList,
+      max_tokens: isCompound ? 512 : 2048,
+    }
+
+    // compound는 temperature 미지원
+    if (!isCompound) {
+      requestBody.temperature = 0.7
+    }
+
     const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${groqKey}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: query }],
-        max_tokens: 2048,
-        temperature: 0.7,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {

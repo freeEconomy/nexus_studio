@@ -315,6 +315,34 @@
   margin-bottom: 0.25rem;
 }
 
+/* Chat bubbles */
+.ma-chat-message {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+.ma-chat-message.user .ma-chat-content {
+  align-self: flex-end;
+  background: #e2e8f0;
+  color: #1e293b;
+  border-radius: 12px 12px 0 12px;
+  padding: 0.6rem 0.9rem;
+  max-width: 80%;
+}
+.ma-chat-message.assistant .ma-chat-content {
+  align-self: flex-start;
+  background: #f1f5f9;
+  color: #1e293b;
+  border-radius: 12px 12px 12px 0;
+  padding: 0.6rem 0.9rem;
+  max-width: 80%;
+}
+.ma-chat-role {
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+  color: #64748b;
+}
+
 /* 오류 */
 .ma-error {
   display: flex;

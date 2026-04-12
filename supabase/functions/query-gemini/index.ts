@@ -12,10 +12,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { query, model = 'gemini-2.5-flash-lite' } = await req.json()
+    const { query, messages, model = 'gemini-2.5-flash-lite' } = await req.json()
 
-    if (!query) {
-      return new Response(JSON.stringify({ error: 'query is required' }), {
+    // messages 배열이 있으면 Gemini 형식으로 변환, 없으면 query로 단일 메시지 생성
+    let contents
+    if (messages && Array.isArray(messages)) {
+      contents = messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }))
+    } else if (query) {
+      contents = [{ role: 'user', parts: [{ text: query }] }]
+    } else {
+      return new Response(JSON.stringify({ error: 'query or messages is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -30,7 +39,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: query }] }],
+        contents: contents,
         generationConfig: {
           maxOutputTokens: 2048,
           temperature: 0.7,

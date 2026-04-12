@@ -67,10 +67,13 @@ supabase link --project-ref {project-id}
 # API 키 환경변수 설정
 supabase secrets set GROQ_API_KEY=gsk_xxxx
 supabase secrets set GEMINI_API_KEY=AIza_xxxx
+# News API 키 설정 (News API 사용 시)
+# supabase secrets set NEWS_API_KEY=your_newsapi_key
 
 # 함수 배포
 supabase functions deploy query-groq
 supabase functions deploy query-gemini
+supabase functions deploy query-news
 ```
 
 ### 4. GitHub Pages 배포
