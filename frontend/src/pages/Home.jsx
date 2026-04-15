@@ -16,6 +16,12 @@ const features = [
     path: '/multi-agent',
   },
   {
+    icon: '✈️',
+    title: '여행플래너',
+    desc: 'AI가 맞춤형 여행 일정을 만들어드립니다.',
+    path: '/travel-planner',
+  },
+  {
     icon: '📈',
     title: '주식',
     desc: '주식 정보를 조회하고 분석합니다.',

@@ -84,6 +84,13 @@ export default function MultiAgent() {
   const isLoading = Object.values(results).some(r => r.status === STATUS.LOADING)
   const hasResults = Object.values(results).some(r => r.status === STATUS.DONE || r.status === STATUS.ERROR)
 
+  // 페이지 로드 시 입력창에 자동 포커스
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+    }
+  }, [])
+
   // 채팅 컨테이너 자동 스크롤
   useEffect(() => {
     if (chatContainerRef.current) {
