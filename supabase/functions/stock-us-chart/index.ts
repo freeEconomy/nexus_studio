@@ -9,7 +9,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { ticker, period = 'D' } = body
+    const { ticker, period = 'D', startDate, endDate } = body
 
     if (!ticker) {
       return new Response(JSON.stringify({ error: 'Ticker is required' }), {
@@ -26,9 +26,16 @@ serve(async (req) => {
       })
     }
 
-    // Calculate date range (last 1 year)
-    const to = Math.floor(Date.now() / 1000)
-    const from = to - (365 * 24 * 60 * 60)
+    // Calculate date range
+    let from, to
+    if (startDate && endDate) {
+      from = Math.floor(new Date(startDate).getTime() / 1000)
+      to = Math.floor(new Date(endDate).getTime() / 1000)
+    } else {
+      // Default: last 1 year
+      to = Math.floor(Date.now() / 1000)
+      from = to - (365 * 24 * 60 * 60)
+    }
 
     const resolution = period === 'D' ? 'D' : period === 'W' ? 'W' : 'M'
 

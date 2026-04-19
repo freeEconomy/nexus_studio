@@ -235,3 +235,64 @@
   background: #dbeafe;
   color: #2563eb;
 }
+
+/* Date Range Selector */
+.date-range-selector {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.date-range-selector label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.date-range-selector input[type="date"] {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.date-range-selector button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.date-range-selector button:first-of-type {
+  background: var(--primary);
+  color: white;
+}
+
+.date-range-selector button:first-of-type:hover {
+  background: var(--primary-hover);
+}
+
+.date-range-selector button:last-of-type {
+  background: var(--secondary);
+  color: var(--text);
+}
+
+.date-range-selector button:last-of-type:hover {
+  background: var(--secondary-hover);
+}
+
+.drag-instruction {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  text-align: center;
+}

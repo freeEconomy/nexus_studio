@@ -9,7 +9,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { ticker, period = 'D' } = body
+    const { ticker, period = 'D', startDate, endDate } = body
 
     if (!ticker) {
       return new Response(JSON.stringify({ error: 'Ticker is required' }), {
@@ -70,6 +70,14 @@ serve(async (req) => {
     url.searchParams.set('fid_input_iscd', ticker.padStart(6, '0'))
     url.searchParams.set('fid_period_div_code', period)
     url.searchParams.set('fid_org_adj_prc', '0')
+
+    // 날짜 범위가 지정된 경우 추가
+    if (startDate) {
+      url.searchParams.set('fid_input_date1', startDate.replace(/-/g, ''))
+    }
+    if (endDate) {
+      url.searchParams.set('fid_input_date2', endDate.replace(/-/g, ''))
+    }
 
     const chartResponse2 = await fetch(url, {
       method: 'GET',

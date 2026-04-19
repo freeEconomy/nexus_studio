@@ -29,20 +29,10 @@ const TravelMap = ({ travelData, routeData }) => {
   const defaultCenter = [37.5665, 126.9780]
   const defaultZoom = 6
 
-  // 여행지 마커 추출
+  // 여행지 마커 추출 (여행지의 경로만 표시)
   const markers = []
   
   if (travelData) {
-    // 출발지 마커
-    if (travelData.origin) {
-      markers.push({
-        position: travelData.origin.coords || defaultCenter,
-        title: `출발: ${travelData.origin.name || '출발지'}`,
-        icon: '🛫',
-        color: '#10b981',
-      })
-    }
-
     // 숙소 마커
     if (travelData.accommodations && travelData.accommodations.length > 0) {
       travelData.accommodations.forEach((acc, index) => {

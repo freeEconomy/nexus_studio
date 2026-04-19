@@ -139,6 +139,11 @@ function PortfolioTab() {
 function StockChart({ stock, onClose }) {
   const chartContainerRef = useRef(null)
   const chartRef = useRef(null)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState(null)
+  const [dragEnd, setDragEnd] = useState(null)
 
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -155,29 +160,99 @@ function StockChart({ stock, onClose }) {
         vertLines: { color: '#e1e1e1' },
         horzLines: { color: '#e1e1e1' },
       },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
     })
 
     const candlestickSeries = chart.addCandlestickSeries()
 
     // 차트 데이터 가져오기
-    fetchChartData(stock.ticker, stock.market).then(data => {
+    fetchChartData(stock.ticker, stock.market, startDate, endDate).then(data => {
       if (data) {
         candlestickSeries.setData(data)
       }
     })
 
+    // 드래그 선택을 위한 이벤트 리스너
+    const handleMouseDown = (event) => {
+      const rect = chartContainerRef.current.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const time = chart.timeScale().coordinateToTime(x)
+      if (time) {
+        setIsDragging(true)
+        setDragStart(time)
+        setDragEnd(time)
+      }
+    }
+
+    const handleMouseMove = (event) => {
+      if (!isDragging || !dragStart) return
+
+      const rect = chartContainerRef.current.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const time = chart.timeScale().coordinateToTime(x)
+      if (time) {
+        setDragEnd(time)
+      }
+    }
+
+    const handleMouseUp = () => {
+      if (isDragging && dragStart && dragEnd) {
+        // 드래그가 완료되면 날짜 범위 설정
+        const start = Math.min(dragStart, dragEnd)
+        const end = Math.max(dragStart, dragEnd)
+
+        const startDateStr = new Date(start * 1000).toISOString().split('T')[0]
+        const endDateStr = new Date(end * 1000).toISOString().split('T')[0]
+
+        setStartDate(startDateStr)
+        setEndDate(endDateStr)
+
+        // 선택 영역 표시를 위해 차트 업데이트
+        fetchChartData(stock.ticker, stock.market, startDateStr, endDateStr).then(data => {
+          if (data) {
+            candlestickSeries.setData(data)
+          }
+        })
+      }
+      setIsDragging(false)
+      setDragStart(null)
+      setDragEnd(null)
+    }
+
+    chartContainerRef.current.addEventListener('mousedown', handleMouseDown)
+    chartContainerRef.current.addEventListener('mousemove', handleMouseMove)
+    chartContainerRef.current.addEventListener('mouseup', handleMouseUp)
+
     chartRef.current = chart
 
     return () => {
+      chartContainerRef.current?.removeEventListener('mousedown', handleMouseDown)
+      chartContainerRef.current?.removeEventListener('mousemove', handleMouseMove)
+      chartContainerRef.current?.removeEventListener('mouseup', handleMouseUp)
       chart.remove()
     }
-  }, [stock])
+  }, [stock, startDate, endDate])
 
-  const fetchChartData = async (ticker, market) => {
+  const fetchChartData = async (ticker, market, start = '', end = '') => {
     try {
-      const fn = market === 'US' ? 'stock-us-chart' : 'stock-kr-chart' // 미국 차트 함수 가정
+      const fn = market === 'US' ? 'stock-us-chart' : 'stock-kr-chart'
       const { data, error } = await supabase.functions.invoke(fn, {
-        body: { ticker, period: 'D' } // 일봉
+        body: {
+          ticker,
+          period: 'D',
+          startDate: start,
+          endDate: end
+        }
       })
       if (error) throw error
       // 데이터 포맷팅: { time: timestamp, open, high, low, close }
@@ -194,11 +269,75 @@ function StockChart({ stock, onClose }) {
     }
   }
 
+  const handleDateRangeSubmit = () => {
+    if (startDate && endDate) {
+      // 날짜 범위가 변경되면 차트 데이터 다시 가져오기
+      const chart = chartRef.current
+      if (chart) {
+        const candlestickSeries = chart.timeScale().series()[0]
+        fetchChartData(stock.ticker, stock.market, startDate, endDate).then(data => {
+          if (data && candlestickSeries) {
+            candlestickSeries.setData(data)
+          }
+        })
+      }
+    }
+  }
+
+  const clearDateRange = () => {
+    setStartDate('')
+    setEndDate('')
+    // 전체 데이터 다시 가져오기
+    const chart = chartRef.current
+    if (chart) {
+      const candlestickSeries = chart.timeScale().series()[0]
+      fetchChartData(stock.ticker, stock.market).then(data => {
+        if (data && candlestickSeries) {
+          candlestickSeries.setData(data)
+        }
+      })
+    }
+  }
+
   return (
     <div className="stock-chart-modal">
       <button onClick={onClose}>닫기</button>
       <h3>{stock.name} ({stock.ticker}) 차트</h3>
-      <div ref={chartContainerRef} style={{ width: '100%', height: '400px' }}></div>
+
+      {/* 날짜 범위 선택 UI */}
+      <div className="date-range-selector">
+        <label>
+          시작일:
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </label>
+        <label>
+          종료일:
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </label>
+        <button onClick={handleDateRangeSubmit}>적용</button>
+        <button onClick={clearDateRange}>초기화</button>
+      </div>
+
+      <p className="drag-instruction">
+        💡 차트에서 드래그하여 날짜 범위를 선택할 수도 있습니다!
+      </p>
+
+      <div
+        ref={chartContainerRef}
+        style={{
+          width: '100%',
+          height: '400px',
+          cursor: isDragging ? 'grabbing' : 'grab'
+        }}
+      ></div>
     </div>
   )
 }

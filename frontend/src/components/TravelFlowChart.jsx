@@ -2,7 +2,6 @@ import React, { useCallback, useMemo } from 'react'
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   MarkerType,
@@ -183,13 +182,6 @@ const TravelFlowChart = ({ travelData }) => {
       >
         <Background gap={12} size={1} />
         <Controls />
-        <MiniMap
-          nodeColor={(n) => {
-            if (n.style?.background === '#10b981') return '#10b981'
-            if (n.style?.background === '#ef4444') return '#ef4444'
-            return '#3b82f6'
-          }}
-        />
       </ReactFlow>
     </div>
   )
