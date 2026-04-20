@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Finnhub symbol search filtered to Korean stocks (.KS = KOSPI, .KQ = KOSDAQ)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -8,10 +9,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { ticker } = await req.json()
+    const { query } = await req.json()
 
-    if (!ticker) {
-      return new Response(JSON.stringify({ error: 'Ticker is required' }), {
+    if (!query) {
+      return new Response(JSON.stringify({ error: 'Query is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -25,7 +26,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`)
+    const response = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${apiKey}`)
     const data = await response.json()
 
     if (data.error) {
@@ -35,7 +36,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    return new Response(JSON.stringify(data), {
+    // Filter to Korean stocks only (.KS = KOSPI, .KQ = KOSDAQ)
+    const results = (data.result || [])
+      .filter((item: any) => /\.(KS|KQ)$/.test(item.symbol))
+      .slice(0, 10)
+
+    return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {

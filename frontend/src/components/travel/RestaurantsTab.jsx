@@ -39,11 +39,13 @@ export default function RestaurantsTab({ restaurants }) {
                     </div>
                     <div className="restaurant-content">
                       <h4>{restaurant.name}</h4>
-                      <div className="restaurant-rating">
-                        <span className="stars">{'⭐'.repeat(Math.floor(restaurant.rating))}</span>
-                        <span className="rating">{restaurant.rating}</span>
-                      </div>
-                      <p className="cuisine">{restaurant.cuisine}</p>
+                      {restaurant.rating != null && (
+                        <div className="restaurant-rating">
+                          <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(restaurant.rating)))}</span>
+                          <span className="rating">{restaurant.rating}</span>
+                        </div>
+                      )}
+                      <p className="cuisine">{restaurant.category}</p>
                       <p className="price">{restaurant.price}</p>
                       <p className="description">{restaurant.description}</p>
                     </div>
@@ -66,11 +68,13 @@ export default function RestaurantsTab({ restaurants }) {
               </div>
               <div className="modal-title">
                 <h2>{selectedRestaurant.name}</h2>
-                <p className="cuisine">{selectedRestaurant.cuisine}</p>
-                <div className="modal-rating">
-                  <span className="stars">{'⭐'.repeat(Math.floor(selectedRestaurant.rating))}</span>
-                  <span className="rating">{selectedRestaurant.rating}</span>
-                </div>
+                <p className="cuisine">{selectedRestaurant.category}</p>
+                {selectedRestaurant.rating != null && (
+                  <div className="modal-rating">
+                    <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(selectedRestaurant.rating)))}</span>
+                    <span className="rating">{selectedRestaurant.rating}</span>
+                  </div>
+                )}
               </div>
             </div>
 

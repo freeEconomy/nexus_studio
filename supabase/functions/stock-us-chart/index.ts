@@ -1,72 +1,74 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-nocheck
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-serve(async (req) => {
-  const { method } = req
-
-  if (method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
-  }
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const body = await req.json()
-    const { ticker, period = 'D', startDate, endDate } = body
+    const { ticker, period = 'D', startDate, endDate } = await req.json()
 
     if (!ticker) {
       return new Response(JSON.stringify({ error: 'Ticker is required' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     const apiKey = Deno.env.get('FINNHUB_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API key not configured' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Calculate date range
     let from, to
     if (startDate && endDate) {
       from = Math.floor(new Date(startDate).getTime() / 1000)
       to = Math.floor(new Date(endDate).getTime() / 1000)
     } else {
-      // Default: last 1 year
       to = Math.floor(Date.now() / 1000)
-      from = to - (365 * 24 * 60 * 60)
+      from = to - 365 * 24 * 60 * 60
     }
 
-    const resolution = period === 'D' ? 'D' : period === 'W' ? 'W' : 'M'
-
-    const response = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${apiKey}`)
+    const resolution = period === 'W' ? 'W' : period === 'M' ? 'M' : 'D'
+    const response = await fetch(
+      `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=${resolution}&from=${from}&to=${to}&token=${apiKey}`
+    )
     const data = await response.json()
 
-    if (data.error) {
-      return new Response(JSON.stringify({ error: data.error }), {
-        headers: { 'Content-Type': 'application/json' },
-        status: 400,
+    if (data.s === 'no_data' || !data.t) {
+      return new Response(JSON.stringify([]), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Format for TradingView
-    const result = data.t.map((time, index) => ({
+    if (data.error) {
+      return new Response(JSON.stringify({ error: data.error }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const result = data.t.map((time: number, i: number) => ({
       time,
-      open: data.o[index],
-      high: data.h[index],
-      low: data.l[index],
-      close: data.c[index],
-      volume: data.v[index],
+      open: data.o[i],
+      high: data.h[i],
+      low: data.l[i],
+      close: data.c[i],
+      volume: data.v[i],
     }))
 
     return new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-  } catch (error) {
-    console.error('Error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      headers: { 'Content-Type': 'application/json' },
+  } catch (err) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })

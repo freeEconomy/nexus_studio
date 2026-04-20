@@ -171,7 +171,7 @@ export default function MultiAgent() {
   return (
     <div className="multi-agent">
       <div className="ma-header">
-        <h1>🤖 멀티 에이전트</h1>
+        <h1>🤖 멀티 AI</h1>
         <p>하나의 질문을 여러 AI 모델에 동시에 요청하고 결과를 비교합니다</p>
       </div>
 

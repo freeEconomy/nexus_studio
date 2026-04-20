@@ -5,7 +5,7 @@ import './Navbar.css'
 const menus = [
   { path: '/', label: '홈' },
   { path: '/weekly-report', label: '주간보고' },
-  { path: '/multi-agent', label: '멀티 에이전트' },
+  { path: '/multi-agent', label: '멀티 AI' },
   { path: '/travel-planner', label: '여행플래너' },
   { path: '/stock', label: '주식' },
 ]

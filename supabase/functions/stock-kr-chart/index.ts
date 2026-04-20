@@ -1,107 +1,77 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-nocheck
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-serve(async (req) => {
-  const { method } = req
-
-  if (method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
-  }
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const body = await req.json()
-    const { ticker, period = 'D', startDate, endDate } = body
+    const { ticker, period = 'D', startDate, endDate } = await req.json()
 
     if (!ticker) {
       return new Response(JSON.stringify({ error: 'Ticker is required' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Get token
     const appKey = Deno.env.get('KIS_APP_KEY')
     const appSecret = Deno.env.get('KIS_APP_SECRET')
 
     if (!appKey || !appSecret) {
       return new Response(JSON.stringify({ error: 'KIS credentials not configured' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     const tokenResponse = await fetch('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        appkey: appKey,
-        appsecret: appSecret,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'client_credentials', appkey: appKey, appsecret: appSecret }),
     })
-
     const tokenData = await tokenResponse.json()
     const accessToken = tokenData.access_token
 
     if (!accessToken) {
       return new Response(JSON.stringify({ error: 'Failed to get access token' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Get chart data
-    const chartResponse = await fetch('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'authorization': `Bearer ${accessToken}`,
-        'appkey': appKey,
-        'appsecret': appSecret,
-        'tr_id': 'FHKST01010400', // 일별 시세
-      },
-    })
-
-    // Note: KIS API requires query params, but fetch body is for POST. Adjust accordingly.
-    // Actually, for GET, use URL params
+    const code = ticker.replace(/\.(KS|KQ)$/, '').padStart(6, '0')
     const url = new URL('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price')
-    url.searchParams.set('fid_cond_mrkt_div_code', 'J')
-    url.searchParams.set('fid_input_iscd', ticker.padStart(6, '0'))
-    url.searchParams.set('fid_period_div_code', period)
-    url.searchParams.set('fid_org_adj_prc', '0')
+    url.searchParams.set('FID_COND_MRKT_DIV_CODE', 'J')
+    url.searchParams.set('FID_INPUT_ISCD', code)
+    url.searchParams.set('FID_PERIOD_DIV_CODE', period)
+    url.searchParams.set('FID_ORG_ADJ_PRC', '0')
+    if (startDate) url.searchParams.set('FID_INPUT_DATE_1', startDate.replace(/-/g, ''))
+    if (endDate) url.searchParams.set('FID_INPUT_DATE_2', endDate.replace(/-/g, ''))
 
-    // 날짜 범위가 지정된 경우 추가
-    if (startDate) {
-      url.searchParams.set('fid_input_date1', startDate.replace(/-/g, ''))
-    }
-    if (endDate) {
-      url.searchParams.set('fid_input_date2', endDate.replace(/-/g, ''))
-    }
-
-    const chartResponse2 = await fetch(url, {
+    const chartResponse = await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'authorization': `Bearer ${accessToken}`,
-        'appkey': appKey,
-        'appsecret': appSecret,
-        'tr_id': 'FHKST01010400',
+        authorization: `Bearer ${accessToken}`,
+        appkey: appKey,
+        appsecret: appSecret,
+        tr_id: 'FHKST01010400',
       },
     })
-
-    const chartData = await chartResponse2.json()
+    const chartData = await chartResponse.json()
 
     if (chartData.rt_cd !== '0') {
       return new Response(JSON.stringify({ error: chartData.msg1 }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Parse output1
-    const data = chartData.output1.map(item => ({
-      time: new Date(item.stck_bsop_date).getTime() / 1000, // timestamp
+    const result = (chartData.output1 || []).map((item: any) => ({
+      time: new Date(item.stck_bsop_date).getTime() / 1000,
       open: parseFloat(item.stck_oprc),
       high: parseFloat(item.stck_hgpr),
       low: parseFloat(item.stck_lwpr),
@@ -109,14 +79,13 @@ serve(async (req) => {
       volume: parseInt(item.acml_vol),
     }))
 
-    return new Response(JSON.stringify(data), {
-      headers: { 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-  } catch (error) {
-    console.error('Error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      headers: { 'Content-Type': 'application/json' },
+  } catch (err) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })

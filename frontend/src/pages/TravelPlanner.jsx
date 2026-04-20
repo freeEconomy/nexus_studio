@@ -70,7 +70,7 @@ export default function TravelPlanner() {
        try {
          generatedData = await generateTravelData(destination, dayCount);
        } catch (apiError) {
-         console.log("API 호출 실패, 더미데이터로 대체:", apiError.message);
+         console.log("generateTravelData 실패, 최소 fallback 사용:", apiError.message);
          const coordinates = await geocodeDestination(destination)
          generatedData = {
            destination,
@@ -78,8 +78,8 @@ export default function TravelPlanner() {
            endDate: formData.endDate,
            dayCount,
            coordinates,
-           places: getPlacesData(destination, coordinates),
-           restaurants: getRestaurantsData(destination, coordinates),
+           places: getMinimalFallback(destination, coordinates, 'places'),
+           restaurants: getMinimalFallback(destination, coordinates, 'restaurants'),
            itinerary: generateItinerary(destination, dayCount),
            weather: generateWeather(dayCount),
            routeCoordinates: generateRouteCoordinates(coordinates),
@@ -153,10 +153,49 @@ const normalizeItinerary = (raw, destination, dayCount) => {
 }
 
 const generateTravelData = async (destination, dayCount) => {
-  // 좌표를 먼저 자동 취득 (Nominatim geocoding)
   const coordinates = await geocodeDestination(destination)
 
-  const [weatherRes, routeRes, itineraryRes] = await Promise.allSettled([
+  // Foursquare 실패 시 Groq compound-beta-mini로 장소 데이터 생성
+  const generatePlacesWithAI = async (type) => {
+    const label = type === 'restaurants' ? '맛집과 레스토랑' : '관광 명소'
+    try {
+      const { data, error } = await supabase.functions.invoke('query-groq', {
+        body: {
+          model: 'compound-beta-mini',
+          messages: [{
+            role: 'user',
+            content: `${destination}의 실제 유명한 ${label} 8곳을 JSON 배열로만 답해줘. 형식: [{"name":"장소명","category":"카테고리","rating":4.2,"address":"주소","hours":"10:00~22:00","price":"가격대","duration":"소요시간","description":"한 줄 설명","tips":"방문 팁"}] 다른 텍스트 없이 JSON 배열만.`
+          }]
+        }
+      })
+      if (error || !data?.result) return null
+      const raw = data.result.replace(/```json\s*|\s*```/g, '').trim()
+      const match = raw.match(/\[[\s\S]*\]/)
+      if (!match) return null
+      const parsed = JSON.parse(match[0])
+      if (!Array.isArray(parsed) || !parsed.length) return null
+      return parsed.map((p, i) => ({
+        id: i + 1,
+        name: p.name || `${destination} ${label} ${i + 1}`,
+        category: p.category || label,
+        rating: p.rating ? Math.round(Number(p.rating) * 10) / 10 : null,
+        reviews: 0,
+        image: getImageUrl(p.name || destination),
+        address: p.address || destination,
+        hours: p.hours || '정보 없음',
+        openNow: null,
+        price: p.price || '정보 없음',
+        duration: p.duration || '1~2시간',
+        description: p.description || '',
+        tips: p.tips || '',
+        coords: { lat: coordinates.lat, lng: coordinates.lng },
+      }))
+    } catch {
+      return null
+    }
+  }
+
+  const [weatherRes, routeRes, itineraryRes, placesRes, restaurantsRes] = await Promise.allSettled([
     // 1. 날씨 예보
     supabase.functions.invoke('query-weather', {
       body: { city: destination }
@@ -173,11 +212,22 @@ const generateTravelData = async (destination, dayCount) => {
       body: {
         model: "groq/compound-mini",
         messages: [{
+          role: "system",
+          content: "너는 전문 여행 가이드야. 여행객 입장에서 정말 필요한 실용적인 정보를 센스있게 잘 설명하고 찾아봐줘. 현지인들이 실제 가는 곳 위주로 추천하고, 관광객 함정에 빠지지 않도록 솔직하게 조언해줘."
+        }, {
           role: "user",
           content: `${destination} 여행 ${dayCount}일 일정을 JSON 배열로 만들어주세요. 형식: [{day:1, date:"1일차", activities:[{time:"09:00", title:"활동명", duration:"1시간", cost:0, type:"attraction"}]}]`
         }]
       }
-    })
+    }),
+    // 4. 여행지 (Google Places API)
+    supabase.functions.invoke('query-places', {
+      body: { destination, type: 'places', lat: coordinates.lat, lng: coordinates.lng }
+    }),
+    // 5. 맛집 (Google Places API)
+    supabase.functions.invoke('query-places', {
+      body: { destination, type: 'restaurants', lat: coordinates.lat, lng: coordinates.lng }
+    }),
   ])
 
   // 날씨: 3시간 예보 → 일별 변환
@@ -215,23 +265,23 @@ const generateTravelData = async (destination, dayCount) => {
     }
   }
 
-  // prepare places and restaurants then enrich with images via fetch-image function
-  let places = getPlacesData(destination, coordinates)
-  let restaurants = getRestaurantsData(destination, coordinates)
+  // 여행지/맛집: Foursquare 결과 → AI fallback → 최소 fallback 순으로 시도
+  const placesData = placesRes.status === 'fulfilled' ? placesRes.value.data : null
+  const restaurantsData = restaurantsRes.status === 'fulfilled' ? restaurantsRes.value.data : null
+  const needPlacesAI = !placesData?.places?.length || placesData.fallback
+  const needRestaurantsAI = !restaurantsData?.places?.length || restaurantsData.fallback
 
-  try {
-    places = await Promise.all(places.map(async (p) => ({ ...p, image: await fetchImageFor(p.name) })))
-  } catch (e) {
-    console.log('places image enrichment failed', e.message)
-    places = places.map(p => ({ ...p, image: getImageUrl(p.name) }))
-  }
+  const [placesAI, restaurantsAI] = await Promise.all([
+    needPlacesAI ? generatePlacesWithAI('places') : Promise.resolve(null),
+    needRestaurantsAI ? generatePlacesWithAI('restaurants') : Promise.resolve(null),
+  ])
 
-  try {
-    restaurants = await Promise.all(restaurants.map(async (r) => ({ ...r, image: await fetchImageFor(r.name) })))
-  } catch (e) {
-    console.log('restaurants image enrichment failed', e.message)
-    restaurants = restaurants.map(r => ({ ...r, image: getImageUrl(r.name) }))
-  }
+  const places = needPlacesAI
+    ? (placesAI || getMinimalFallback(destination, coordinates, 'places'))
+    : placesData.places
+  const restaurants = needRestaurantsAI
+    ? (restaurantsAI || getMinimalFallback(destination, coordinates, 'restaurants'))
+    : restaurantsData.places
 
   return {
     destination,
@@ -489,92 +539,18 @@ const geocodeDestination = async (destination) => {
   return { lat: 37.5665, lng: 126.9780 } // 기본값: 서울
 }
 
-const getPlacesData = (destination, coords = { lat: 37.5665, lng: 126.9780 }) => {
-  const places = {
-    "도쿄": [
-      { id: 1, name: "센소지 사원", category: "역사", rating: 4.8, reviews: 2340, image: "⛩️", address: "타이토구", hours: "06:00-17:00", price: "무료", duration: "2시간", tips: "아침 방문 추천", description: "도쿄 가장 오래된 사원", coords: { lat: 35.7149, lng: 139.7967 } },
-      { id: 2, name: "시부야 스크램블", category: "현대", rating: 4.6, reviews: 5210, image: "🏙️", address: "시부야구", hours: "24h", price: "무료", duration: "1시간", tips: "밤 야경 추천", description: "세계 최대 횡단보도", coords: { lat: 35.6595, lng: 139.7004 } },
-      { id: 3, name: "메이지 신궁", category: "자연", rating: 4.7, reviews: 1890, image: "🌲", address: "시부야구", hours: "09:00-16:30", price: "무료", duration: "1.5시간", tips: "조용한 숲 산책", description: "넓은 신궁 숲", coords: { lat: 35.6762, lng: 139.6997 } },
-      { id: 4, name: "도쿄 타워", category: "현대", rating: 4.5, reviews: 3450, image: "🗼", address: "미나토구", hours: "09:00-23:00", price: "900엔~", duration: "1.5시간", tips: "저녁 야경 추천", description: "도쿄 상징 철탑", coords: { lat: 35.6586, lng: 139.7454 } },
-    ],
-    "제주": [
-      { id: 1, name: "한라산", category: "자연", rating: 4.9, reviews: 4560, image: "⛰️", address: "제주시", hours: "07:00-일몰", price: "무료", duration: "6시간", tips: "편한 신발 필수", description: "한국 최고봉 1,950m", coords: { lat: 33.3618, lng: 126.5296 } },
-      { id: 2, name: "성산 일출봉", category: "자연", rating: 4.8, reviews: 3210, image: "🌅", address: "서귀포시", hours: "상시", price: "2000원", duration: "2시간", tips: "일출 감상 추천", description: "유네스코 세계자연유산", coords: { lat: 33.4608, lng: 126.9426 } },
-      { id: 3, name: "용머리 해안", category: "자연", rating: 4.6, reviews: 2890, image: "🏖️", address: "서귀포시", hours: "08:00-일몰", price: "무료", duration: "1.5시간", tips: "물때 확인 필수", description: "신비로운 해안 절벽", coords: { lat: 33.2422, lng: 126.2629 } },
-      { id: 4, name: "여미지 식물원", category: "공원", rating: 4.5, reviews: 1540, image: "🌺", address: "서귀포시", hours: "09:00-18:00", price: "12000원", duration: "2시간", tips: "사진 명소", description: "열대 식물원", coords: { lat: 33.2516, lng: 126.4088 } },
-    ],
-    "서울": [
-      { id: 1, name: "경복궁", category: "역사", rating: 4.8, reviews: 5600, image: "🏯", address: "종로구", hours: "09:00-18:00", price: "3000원", duration: "2시간", tips: "한복 대여 추천", description: "조선 왕조 정궁", coords: { lat: 37.5796, lng: 126.9770 } },
-      { id: 2, name: "남산 서울타워", category: "현대", rating: 4.7, reviews: 4200, image: "🗼", address: "용산구", hours: "10:00-23:00", price: "21000원~", duration: "2시간", tips: "야경 추천", description: "서울 전경 조망 명소", coords: { lat: 37.5512, lng: 126.9882 } },
-      { id: 3, name: "북촌 한옥마을", category: "역사", rating: 4.5, reviews: 2890, image: "🏘️", address: "종로구", hours: "상시", price: "무료", duration: "2시간", tips: "이른 아침 방문", description: "전통 한옥 골목", coords: { lat: 37.5830, lng: 126.9837 } },
-      { id: 4, name: "홍대 거리", category: "문화", rating: 4.4, reviews: 3100, image: "🎨", address: "마포구", hours: "24h", price: "무료", duration: "3시간", tips: "저녁 활기참", description: "예술·문화·쇼핑 거리", coords: { lat: 37.5563, lng: 126.9233 } },
-    ],
-    "오사카": [
-      { id: 1, name: "오사카성", category: "역사", rating: 4.7, reviews: 4800, image: "🏯", address: "주오구", hours: "09:00-17:00", price: "600엔", duration: "2시간", tips: "벚꽃 시즌 추천", description: "도요토미 히데요시의 성", coords: { lat: 34.6873, lng: 135.5262 } },
-      { id: 2, name: "도톤보리", category: "현대", rating: 4.6, reviews: 6300, image: "🦀", address: "나니와구", hours: "24h", price: "무료", duration: "2시간", tips: "저녁 네온사인 추천", description: "오사카 대표 번화가", coords: { lat: 34.6687, lng: 135.5013 } },
-      { id: 3, name: "유니버설 스튜디오", category: "테마파크", rating: 4.8, reviews: 8900, image: "🎢", address: "사쿠시마", hours: "09:00-21:00", price: "8600엔~", duration: "하루 종일", tips: "패스트패스 추천", description: "세계적 테마파크", coords: { lat: 34.6654, lng: 135.4324 } },
-      { id: 4, name: "신사이바시", category: "쇼핑", rating: 4.4, reviews: 3200, image: "🛍️", address: "주오구", hours: "11:00-21:00", price: "무료", duration: "2시간", tips: "쇼핑 천국", description: "아케이드 쇼핑거리", coords: { lat: 34.6721, lng: 135.5013 } },
-    ],
-  }
-  if (places[destination]) return places[destination].map(p => ({ ...p, image: getImageUrl(p.name) }))
-
-  // 알 수 없는 여행지: geocoding으로 받은 coords 사용
+// Foursquare API 실패 시 최소 fallback — 이름·좌표만 제공, 실제 데이터 없음
+const getMinimalFallback = (destination, coords, type) => {
   const c = coords
-  return [
-    { id: 1, name: `${destination} 구시가지`, category: "역사", rating: 4.5, reviews: 1800, image: getImageUrl(`${destination} 구시가지`), address: destination, hours: "09:00-18:00", price: "무료", duration: "2시간", tips: "아침 방문 추천", description: `${destination}의 역사적 중심지`, coords: { lat: c.lat + 0.01, lng: c.lng } },
-    { id: 2, name: `${destination} 중앙공원`, category: "자연", rating: 4.3, reviews: 1200, image: getImageUrl(`${destination} 중앙공원`), address: destination, hours: "06:00-22:00", price: "무료", duration: "1.5시간", tips: "산책 코스", description: "도심 속 자연 휴식처", coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
-    { id: 3, name: `${destination} 전통시장`, category: "문화", rating: 4.2, reviews: 950, image: getImageUrl(`${destination} 전통시장`), address: destination, hours: "09:00-20:00", price: "무료", duration: "1시간", tips: "로컬 음식 추천", description: "현지 문화 체험 최적", coords: { lat: c.lat, lng: c.lng + 0.015 } },
-    { id: 4, name: `${destination} 전망대`, category: "현대", rating: 4.6, reviews: 2800, image: getImageUrl(`${destination} 전망대`), address: destination, hours: "10:00-22:00", price: "10,000원~", duration: "1시간", tips: "일몰 감상 추천", description: "도시 전체가 한눈에", coords: { lat: c.lat + 0.015, lng: c.lng - 0.01 } },
-    { id: 5, name: `${destination} 박물관`, category: "역사", rating: 4.4, reviews: 1600, image: getImageUrl(`${destination} 박물관`), address: destination, hours: "09:00-17:00", price: "5,000원~", duration: "2시간", tips: "오디오 가이드 활용", description: "지역 역사와 문화 전시", coords: { lat: c.lat - 0.015, lng: c.lng - 0.01 } },
-  ]
-}
-
-const getRestaurantsData = (destination, coords = { lat: 37.5665, lng: 126.9780 }) => {
-  const restaurants = {
-    "도쿄": {
-      "일식": [
-        { id: 1, name: "오마카세", cuisine: "일식", category: "일식", rating: 4.9, reviews: 850, image: "🍣", price: "¥¥¥¥", description: "고급 오마카세", tips: "예약 필수", address: "긴자", hours: "18:00-22:00", coords: { lat: 35.6711, lng: 139.7280 } },
-        { id: 2, name: "쓰키지 해산물", cuisine: "일식", category: "일식", rating: 4.6, reviews: 2100, image: "🍙", price: "¥¥", description: "신선 회덮밥", tips: "오전 방문", address: "쓰키지", hours: "05:00-14:00", coords: { lat: 35.6650, lng: 139.7710 } },
-      ],
-      "라멘": [
-        { id: 3, name: "이치란 라멘", cuisine: "라멘", category: "라멘", rating: 4.5, reviews: 4320, image: "🍜", price: "¥¥", description: "진한 국물 라멘", tips: "줄 필수", address: "신주쿠", hours: "24시간", coords: { lat: 35.6645, lng: 139.7590 } },
-        { id: 4, name: "후지야마 라멘", cuisine: "라멘", category: "라멘", rating: 4.4, reviews: 2850, image: "🥢", price: "¥¥", description: "독특한 맛의 라멘", tips: "점심 붐빔", address: "아키하바라", hours: "11:00-22:00", coords: { lat: 35.6700, lng: 139.7610 } },
-      ],
-    },
-    "제주": {
-      "흑돼지": [
-        { id: 5, name: "흑돼지 거리", cuisine: "흑돼지", category: "흑돼지", rating: 4.7, reviews: 1250, image: "🐷", price: "₩₩₩", description: "제주 흑돼지 구이 전문", tips: "저녁 예약 필수", address: "제주 연동", hours: "17:00-22:00", coords: { lat: 33.5034, lng: 126.4920 } },
-      ],
-      "향토": [
-        { id: 6, name: "제주 고등어국밥", cuisine: "향토", category: "향토", rating: 4.5, reviews: 890, image: "🍲", price: "₩₩", description: "제주 향토 음식", tips: "점심만 운영", address: "제주 동문시장", hours: "09:00-15:00", coords: { lat: 33.5021, lng: 126.4855 } },
-      ],
-    },
-    "서울": {
-      "한식": [
-        { id: 7, name: "광장시장 빈대떡", cuisine: "한식", category: "한식", rating: 4.7, reviews: 3200, image: "🥞", price: "₩", description: "전통 빈대떡·마약김밥", tips: "줄 서서 먹는 맛", address: "종로 광장시장", hours: "08:00-23:00", coords: { lat: 37.5699, lng: 126.9994 } },
-        { id: 8, name: "명동 칼국수", cuisine: "한식", category: "한식", rating: 4.5, reviews: 1800, image: "🍜", price: "₩₩", description: "시원한 칼국수", tips: "점심 줄 선다", address: "명동", hours: "10:30-21:00", coords: { lat: 37.5636, lng: 126.9822 } },
-      ],
-      "카페": [
-        { id: 9, name: "익선동 카페거리", cuisine: "카페", category: "카페", rating: 4.4, reviews: 2100, image: "☕", price: "₩₩", description: "한옥 카페 밀집지", tips: "인스타 명소", address: "종로 익선동", hours: "11:00-22:00", coords: { lat: 37.5746, lng: 126.9937 } },
-      ],
-    },
-    "오사카": {
-      "오사카 음식": [
-        { id: 10, name: "도톤보리 타코야키", cuisine: "타코야키", category: "오사카 음식", rating: 4.6, reviews: 5400, image: "🐙", price: "¥", description: "오사카 명물 타코야키", tips: "갓 나온 것 추천", address: "도톤보리", hours: "11:00-23:00", coords: { lat: 34.6687, lng: 135.5013 } },
-        { id: 11, name: "쿠로몬 시장", cuisine: "현지음식", category: "오사카 음식", rating: 4.5, reviews: 2300, image: "🦐", price: "¥¥", description: "오사카의 부엌", tips: "오전 활기참", address: "주오구", hours: "08:00-18:00", coords: { lat: 34.6696, lng: 135.5078 } },
-      ],
-    },
+  if (type === 'restaurants') {
+    return [
+      { id: 1, name: `${destination} 현지 맛집 1`, category: '현지음식', rating: null, reviews: 0, image: getImageUrl(`${destination} restaurant`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 현지 음식`, tips: '', coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
+      { id: 2, name: `${destination} 현지 맛집 2`, category: '현지음식', rating: null, reviews: 0, image: getImageUrl(`${destination} food`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 현지 음식`, tips: '', coords: { lat: c.lat - 0.005, lng: c.lng + 0.005 } },
+    ]
   }
-  const categoryData = restaurants[destination]
-  if (categoryData) return Object.values(categoryData).flat().map(r => ({ ...r, image: getImageUrl(r.name) }))
-
-  // 알 수 없는 여행지: geocoding으로 받은 coords 사용
-  const c = coords
   return [
-    { id: 1, name: `${destination} 대표 레스토랑`, cuisine: "현지음식", category: "현지음식", rating: 4.5, reviews: 1200, image: getImageUrl(`${destination} 대표 레스토랑`), price: "₩₩", description: `${destination} 현지 대표 요리`, tips: "예약 추천", address: destination, hours: "11:00-21:00", coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
-    { id: 2, name: `${destination} 전통 시장 음식`, cuisine: "길거리음식", category: "길거리음식", rating: 4.3, reviews: 870, image: getImageUrl(`${destination} 전통 시장 음식`), price: "₩", description: "현지인이 사랑하는 맛", tips: "저녁 방문", address: destination, hours: "18:00-23:00", coords: { lat: c.lat - 0.005, lng: c.lng + 0.008 } },
-    { id: 3, name: `${destination} 카페`, cuisine: "카페", category: "카페", rating: 4.2, reviews: 640, image: getImageUrl(`${destination} 카페`), price: "₩", description: "현지 인기 카페", tips: "오전 한가함", address: destination, hours: "08:00-20:00", coords: { lat: c.lat + 0.008, lng: c.lng + 0.005 } },
-    { id: 4, name: `${destination} 해산물 식당`, cuisine: "해산물", category: "해산물", rating: 4.4, reviews: 980, image: getImageUrl(`${destination} 해산물 식당`), price: "₩₩₩", description: "신선한 현지 해산물", tips: "점심 추천", address: destination, hours: "11:00-20:00", coords: { lat: c.lat - 0.008, lng: c.lng - 0.008 } },
+    { id: 1, name: `${destination} 주요 명소 1`, category: '관광명소', rating: null, reviews: 0, image: getImageUrl(`${destination} attraction`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 관광 명소`, tips: '', coords: { lat: c.lat + 0.01, lng: c.lng } },
+    { id: 2, name: `${destination} 주요 명소 2`, category: '관광명소', rating: null, reviews: 0, image: getImageUrl(`${destination} landmark`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 관광 명소`, tips: '', coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
   ]
 }
 
@@ -663,17 +639,3 @@ const generateRouteCoordinates = ({ lat, lng }) => {
 }
 
 const getImageUrl = (name) => `https://picsum.photos/seed/${encodeURIComponent(name)}/800/600`
-
-// Fetch image URL from Supabase Edge Function 'fetch-image'
-const fetchImageFor = async (query) => {
-  try {
-    const res = await supabase.functions.invoke('fetch-image', { body: { query } })
-    // supabase.functions.invoke returns { data, error }
-    if (res?.data?.url) return res.data.url
-    if (res?.url) return res.url
-  } catch (e) {
-    console.log('fetchImageFor error', e?.message || String(e))
-  }
-  // local fallback image
-  return '/images/fallback.svg'
-}

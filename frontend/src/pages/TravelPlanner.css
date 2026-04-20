@@ -319,6 +319,20 @@
   font-size: 0.85rem;
   color: #475569;
   font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-chip:hover {
+  border-color: #667eea;
+  background: #f0f4ff;
+  color: #667eea;
+}
+
+.filter-chip.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
 }
 
 .places-grid {
@@ -712,6 +726,12 @@
   background: white;
 }
 
+@media (max-width: 480px) {
+  .day-schedule {
+    padding: 1rem;
+  }
+}
+
 .day-header {
   display: flex;
   justify-content: space-between;
@@ -719,6 +739,15 @@
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #f1f5f9;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .day-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+  }
 }
 
 .day-header h3 {
@@ -746,6 +775,13 @@
   background: #f8fafc;
   border-radius: 8px;
   border-left: 4px solid #667eea;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .activity-item {
+    padding: 0.75rem;
+  }
 }
 
 .activity-item.activity-lunch {
@@ -768,6 +804,7 @@
   flex-direction: column;
   align-items: center;
   min-width: 60px;
+  flex-shrink: 0;
 }
 
 .time-badge {
@@ -788,6 +825,13 @@
 
 .activity-body {
   flex: 1;
+  min-width: 200px;
+}
+
+@media (max-width: 480px) {
+  .activity-body {
+    min-width: 150px;
+  }
 }
 
 .activity-header {
@@ -795,6 +839,8 @@
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .activity-body h4 {
@@ -849,6 +895,15 @@
   padding: 0.75rem 0;
   font-size: 0.95rem;
   color: #475569;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .cost-item {
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+  }
 }
 
 .cost-item strong {
@@ -991,9 +1046,17 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .weather-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .weather-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 
@@ -1003,6 +1066,12 @@
   border-radius: 12px;
   padding: 1.5rem;
   text-align: center;
+}
+
+@media (max-width: 480px) {
+  .weather-card {
+    padding: 1rem;
+  }
 }
 
 .weather-day {
@@ -1015,6 +1084,13 @@
 .weather-emoji {
   font-size: 3rem;
   margin: 0.75rem 0;
+  line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .weather-emoji {
+    font-size: 2.5rem;
+  }
 }
 
 .weather-temps {
@@ -1023,9 +1099,16 @@
 
 .temp-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 1rem;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
+}
+
+@media (max-width: 480px) {
+  .temp-row {
+    font-size: 0.85rem;
+  }
 }
 
 .temp-label {

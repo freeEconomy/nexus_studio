@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/query-places -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -H 'Content-Type: application/json' -d '{\"destination\":\"도쿄\",\"type\":\"places\",\"lat\":35.6762,\"lng\":139.6503}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/query-groq -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -H 'Content-Type: application/json' -d '{\"model\":\"compound-beta-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"안녕\"}]}')",
+      "Bash(supabase --version)",
+      "Bash(npx supabase *)",
+      "Bash(supabase functions *)",
+      "WebFetch(domain:docs.foursquare.com)"
+    ]
+  }
+}

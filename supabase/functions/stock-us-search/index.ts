@@ -1,28 +1,27 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-nocheck
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-serve(async (req) => {
-  const { method } = req
-
-  if (method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
-  }
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const body = await req.json()
-    const { query } = body
+    const { query } = await req.json()
 
     if (!query) {
       return new Response(JSON.stringify({ error: 'Query is required' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     const apiKey = Deno.env.get('FINNHUB_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API key not configured' }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -31,22 +30,20 @@ serve(async (req) => {
 
     if (data.error) {
       return new Response(JSON.stringify({ error: data.error }), {
-        headers: { 'Content-Type': 'application/json' },
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Filter to stocks
-    const results = data.result.filter(item => item.type === 'Common Stock').slice(0, 10)
+    const results = (data.result || []).filter((item: any) => item.type === 'Common Stock').slice(0, 10)
 
     return new Response(JSON.stringify(results), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-  } catch (error) {
-    console.error('Error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      headers: { 'Content-Type': 'application/json' },
+  } catch (err) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })

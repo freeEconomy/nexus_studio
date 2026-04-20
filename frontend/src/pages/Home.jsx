@@ -11,7 +11,7 @@ const features = [
   },
   {
     icon: '🤖',
-    title: '멀티 에이전트',
+    title: '멀티 AI',
     desc: '하나의 질문을 여러 AI 모델에 동시에 요청하고 결과를 비교합니다.',
     path: '/multi-agent',
   },

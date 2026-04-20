@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 
 export default function PlacesTab({ places, destination }) {
   const [selectedPlace, setSelectedPlace] = useState(null)
+  const [selectedCategories, setSelectedCategories] = useState([])
 
   if (!places || places.length === 0) {
     return (
@@ -13,6 +14,20 @@ export default function PlacesTab({ places, destination }) {
 
   const categories = [...new Set(places.map(p => p.category))]
 
+  // 필터링 함수
+  const handleCategoryFilter = (category) => {
+    setSelectedCategories(prev => 
+      prev.includes(category) 
+        ? prev.filter(c => c !== category)
+        : [...prev, category]
+    )
+  }
+
+  // 필터링된 여행지 목록
+  const filteredPlaces = selectedCategories.length === 0 
+    ? places 
+    : places.filter(place => selectedCategories.includes(place.category))
+
   return (
     <div className="tp-tab-content places-tab">
       <div className="places-header">
@@ -23,15 +38,19 @@ export default function PlacesTab({ places, destination }) {
       {/* 카테고리 필터 */}
       <div className="filter-chips">
         {categories.map(category => (
-          <div key={category} className="filter-chip">
+          <button
+            key={category}
+            className={`filter-chip ${selectedCategories.includes(category) ? 'active' : ''}`}
+            onClick={() => handleCategoryFilter(category)}
+          >
             {category}
-          </div>
+          </button>
         ))}
       </div>
 
       {/* 여행지 카드 그리드 */}
       <div className="places-grid">
-        {places.map(place => (
+        {filteredPlaces.map(place => (
           <div
             key={place.id}
             className="place-card"
@@ -42,10 +61,12 @@ export default function PlacesTab({ places, destination }) {
             </div>
             <div className="place-content">
               <h3>{place.name}</h3>
-              <div className="place-rating">
-                <span className="stars">{'⭐'.repeat(Math.floor(place.rating))}</span>
-                <span className="rating-value">{place.rating}</span>
-              </div>
+              {place.rating != null && (
+                <div className="place-rating">
+                  <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(place.rating)))}</span>
+                  <span className="rating-value">{place.rating}</span>
+                </div>
+              )}
               <p className="place-category">{place.category}</p>
               <p className="place-price">가격: {place.price}</p>
               <div className="place-meta">
@@ -68,10 +89,12 @@ export default function PlacesTab({ places, destination }) {
               </div>
               <div className="modal-title">
                 <h2>{selectedPlace.name}</h2>
-                <div className="modal-rating">
-                  <span className="stars">{'⭐'.repeat(Math.floor(selectedPlace.rating))}</span>
-                  <span className="rating-value">{selectedPlace.rating}</span>
-                </div>
+                {selectedPlace.rating != null && (
+                  <div className="modal-rating">
+                    <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(selectedPlace.rating)))}</span>
+                    <span className="rating-value">{selectedPlace.rating}</span>
+                  </div>
+                )}
               </div>
             </div>
 
