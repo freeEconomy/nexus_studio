@@ -37,7 +37,9 @@ export default function PlacesTab({ places, destination }) {
             className="place-card"
             onClick={() => setSelectedPlace(place)}
           >
-            <div className="place-image">{place.image}</div>
+            <div className="place-image">
+              <img src={place.image} alt={place.name} loading="lazy" />
+            </div>
             <div className="place-content">
               <h3>{place.name}</h3>
               <div className="place-rating">
@@ -61,7 +63,9 @@ export default function PlacesTab({ places, destination }) {
             <button className="modal-close" onClick={() => setSelectedPlace(null)}>✕</button>
             
             <div className="modal-header">
-              <div className="modal-image">{selectedPlace.image}</div>
+              <div className="modal-image">
+                <img src={selectedPlace.image} alt={selectedPlace.name} />
+              </div>
               <div className="modal-title">
                 <h2>{selectedPlace.name}</h2>
                 <div className="modal-rating">

@@ -24,12 +24,15 @@ export default function TravelPlanner() {
     endDate: "",
     adults: 2,
     children: 0,
+    childAges: "",
   })
   const [activeTab, setActiveTab] = useState("places")
   const [status, setStatus] = useState("idle")
   const [error, setError] = useState("")
   const [travelData, setTravelData] = useState(null)
   const [isGenerated, setIsGenerated] = useState(false)
+  const [recentSearches, setRecentSearches] = useState([])
+  const [showRecentSearches, setShowRecentSearches] = useState(false)
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -39,6 +42,11 @@ export default function TravelPlanner() {
   const handleNumberChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: parseInt(value) || 0 }))
+  }
+
+  const handleTextChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
    const handleSubmit = async () => {
@@ -81,6 +89,16 @@ export default function TravelPlanner() {
        setTravelData(generatedData)
        setIsGenerated(true)
        setStatus("done")
+       
+       // 최근 검색 저장
+       saveRecentSearch({
+         destination,
+         startDate: formData.startDate,
+         endDate: formData.endDate,
+         adults: formData.adults,
+         children: formData.children,
+         childAges: formData.childAges,
+       })
      } catch (err) {
        setError(err.message)
        setStatus("error")
@@ -197,19 +215,78 @@ const generateTravelData = async (destination, dayCount) => {
     }
   }
 
+  // prepare places and restaurants then enrich with images via fetch-image function
+  let places = getPlacesData(destination, coordinates)
+  let restaurants = getRestaurantsData(destination, coordinates)
+
+  try {
+    places = await Promise.all(places.map(async (p) => ({ ...p, image: await fetchImageFor(p.name) })))
+  } catch (e) {
+    console.log('places image enrichment failed', e.message)
+    places = places.map(p => ({ ...p, image: getImageUrl(p.name) }))
+  }
+
+  try {
+    restaurants = await Promise.all(restaurants.map(async (r) => ({ ...r, image: await fetchImageFor(r.name) })))
+  } catch (e) {
+    console.log('restaurants image enrichment failed', e.message)
+    restaurants = restaurants.map(r => ({ ...r, image: getImageUrl(r.name) }))
+  }
+
   return {
     destination,
     startDate: formData.startDate,
     endDate: formData.endDate,
     dayCount,
     coordinates,
-    places: getPlacesData(destination, coordinates),
-    restaurants: getRestaurantsData(destination, coordinates),
+    places,
+    restaurants,
     itinerary,
     weather,
     routeCoordinates,
   }
 }
+
+  // 최근 검색 저장
+  const saveRecentSearch = (data) => {
+    const recent = JSON.parse(localStorage.getItem('travelRecentSearches') || '[]')
+    const newSearch = {
+      destination: data.destination,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      adults: data.adults,
+      children: data.children,
+      childAges: data.childAges || "",
+      timestamp: new Date().toISOString(),
+    }
+    // 중복 제거 및 최대 5개 저장
+    const filtered = recent.filter(r => 
+      !(r.destination === newSearch.destination && r.startDate === newSearch.startDate)
+    )
+    const updated = [newSearch, ...filtered].slice(0, 5)
+    localStorage.setItem('travelRecentSearches', JSON.stringify(updated))
+    setRecentSearches(updated)
+  }
+
+  // 최근 검색 불러오기
+  const loadRecentSearch = (search) => {
+    setFormData({
+      destination: search.destination,
+      startDate: search.startDate,
+      endDate: search.endDate,
+      adults: search.adults,
+      children: search.children,
+      childAges: search.childAges || "",
+    })
+    setShowRecentSearches(false)
+    handleSubmit()
+  }
+
+  // 컴포넌트 마운트 시 최근 검색 불러오기
+  React.useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem('travelRecentSearches') || '[]')
+    setRecentSearches(saved)
+  }, [])
 
   const handleReset = () => {
     setFormData({
@@ -218,6 +295,7 @@ const generateTravelData = async (destination, dayCount) => {
       endDate: "",
       adults: 2,
       children: 0,
+      childAges: "",
     })
     setStatus("idle")
     setError("")
@@ -290,15 +368,60 @@ const generateTravelData = async (destination, dayCount) => {
                 />
               </div>
             </div>
+            {formData.children > 0 && (
+              <div className="form-group">
+                <label htmlFor="childAges">아이 나이 (쉼표로 구분)</label>
+                <input
+                  id="childAges"
+                  type="text"
+                  name="childAges"
+                  placeholder="예: 5, 7, 10"
+                  value={formData.childAges}
+                  onChange={handleTextChange}
+                />
+              </div>
+            )}
             <div className="form-actions">
+              {recentSearches.length > 0 && (
+                <button
+                  className="btn-recent"
+                  onClick={() => setShowRecentSearches(!showRecentSearches)}
+                >
+                  최근 검색
+                </button>
+              )}
               <button
                 className="btn-submit"
                 onClick={handleSubmit}
                 disabled={status === "loading"}
               >
-                {status === "loading" ? "생성 중..." : "여행 계획 생성"}
+                {status === "loading" ? (
+                  <span className="btn-loading">
+                    <span className="spinner"></span>
+                    생성 중...
+                  </span>
+                ) : "여행 계획 생성"}
               </button>
             </div>
+
+            {showRecentSearches && recentSearches.length > 0 && (
+              <div className="recent-searches">
+                <h3>최근 검색</h3>
+                <ul>
+                  {recentSearches.map((search, idx) => (
+                    <li key={idx} onClick={() => loadRecentSearch(search)}>
+                      <span className="recent-destination">{search.destination}</span>
+                      <span className="recent-date">
+                        {new Date(search.startDate).toLocaleDateString('ko-KR')} ~ {new Date(search.endDate).toLocaleDateString('ko-KR')}
+                      </span>
+                      <span className="recent-people">
+                        {search.adults + search.children}명
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )
@@ -393,16 +516,16 @@ const getPlacesData = (destination, coords = { lat: 37.5665, lng: 126.9780 }) =>
       { id: 4, name: "신사이바시", category: "쇼핑", rating: 4.4, reviews: 3200, image: "🛍️", address: "주오구", hours: "11:00-21:00", price: "무료", duration: "2시간", tips: "쇼핑 천국", description: "아케이드 쇼핑거리", coords: { lat: 34.6721, lng: 135.5013 } },
     ],
   }
-  if (places[destination]) return places[destination]
+  if (places[destination]) return places[destination].map(p => ({ ...p, image: getImageUrl(p.name) }))
 
   // 알 수 없는 여행지: geocoding으로 받은 coords 사용
   const c = coords
   return [
-    { id: 1, name: `${destination} 구시가지`, category: "역사", rating: 4.5, reviews: 1800, image: "🏛️", address: destination, hours: "09:00-18:00", price: "무료", duration: "2시간", tips: "아침 방문 추천", description: `${destination}의 역사적 중심지`, coords: { lat: c.lat + 0.01, lng: c.lng } },
-    { id: 2, name: `${destination} 중앙공원`, category: "자연", rating: 4.3, reviews: 1200, image: "🌿", address: destination, hours: "06:00-22:00", price: "무료", duration: "1.5시간", tips: "산책 코스", description: "도심 속 자연 휴식처", coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
-    { id: 3, name: `${destination} 전통시장`, category: "문화", rating: 4.2, reviews: 950, image: "🛒", address: destination, hours: "09:00-20:00", price: "무료", duration: "1시간", tips: "로컬 음식 추천", description: "현지 문화 체험 최적", coords: { lat: c.lat, lng: c.lng + 0.015 } },
-    { id: 4, name: `${destination} 전망대`, category: "현대", rating: 4.6, reviews: 2800, image: "🗼", address: destination, hours: "10:00-22:00", price: "10,000원~", duration: "1시간", tips: "일몰 감상 추천", description: "도시 전체가 한눈에", coords: { lat: c.lat + 0.015, lng: c.lng - 0.01 } },
-    { id: 5, name: `${destination} 박물관`, category: "역사", rating: 4.4, reviews: 1600, image: "🏛️", address: destination, hours: "09:00-17:00", price: "5,000원~", duration: "2시간", tips: "오디오 가이드 활용", description: "지역 역사와 문화 전시", coords: { lat: c.lat - 0.015, lng: c.lng - 0.01 } },
+    { id: 1, name: `${destination} 구시가지`, category: "역사", rating: 4.5, reviews: 1800, image: getImageUrl(`${destination} 구시가지`), address: destination, hours: "09:00-18:00", price: "무료", duration: "2시간", tips: "아침 방문 추천", description: `${destination}의 역사적 중심지`, coords: { lat: c.lat + 0.01, lng: c.lng } },
+    { id: 2, name: `${destination} 중앙공원`, category: "자연", rating: 4.3, reviews: 1200, image: getImageUrl(`${destination} 중앙공원`), address: destination, hours: "06:00-22:00", price: "무료", duration: "1.5시간", tips: "산책 코스", description: "도심 속 자연 휴식처", coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
+    { id: 3, name: `${destination} 전통시장`, category: "문화", rating: 4.2, reviews: 950, image: getImageUrl(`${destination} 전통시장`), address: destination, hours: "09:00-20:00", price: "무료", duration: "1시간", tips: "로컬 음식 추천", description: "현지 문화 체험 최적", coords: { lat: c.lat, lng: c.lng + 0.015 } },
+    { id: 4, name: `${destination} 전망대`, category: "현대", rating: 4.6, reviews: 2800, image: getImageUrl(`${destination} 전망대`), address: destination, hours: "10:00-22:00", price: "10,000원~", duration: "1시간", tips: "일몰 감상 추천", description: "도시 전체가 한눈에", coords: { lat: c.lat + 0.015, lng: c.lng - 0.01 } },
+    { id: 5, name: `${destination} 박물관`, category: "역사", rating: 4.4, reviews: 1600, image: getImageUrl(`${destination} 박물관`), address: destination, hours: "09:00-17:00", price: "5,000원~", duration: "2시간", tips: "오디오 가이드 활용", description: "지역 역사와 문화 전시", coords: { lat: c.lat - 0.015, lng: c.lng - 0.01 } },
   ]
 }
 
@@ -443,15 +566,15 @@ const getRestaurantsData = (destination, coords = { lat: 37.5665, lng: 126.9780 
     },
   }
   const categoryData = restaurants[destination]
-  if (categoryData) return Object.values(categoryData).flat()
+  if (categoryData) return Object.values(categoryData).flat().map(r => ({ ...r, image: getImageUrl(r.name) }))
 
   // 알 수 없는 여행지: geocoding으로 받은 coords 사용
   const c = coords
   return [
-    { id: 1, name: `${destination} 대표 레스토랑`, cuisine: "현지음식", category: "현지음식", rating: 4.5, reviews: 1200, image: "🍽️", price: "₩₩", description: `${destination} 현지 대표 요리`, tips: "예약 추천", address: destination, hours: "11:00-21:00", coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
-    { id: 2, name: `${destination} 전통 시장 음식`, cuisine: "길거리음식", category: "길거리음식", rating: 4.3, reviews: 870, image: "🥘", price: "₩", description: "현지인이 사랑하는 맛", tips: "저녁 방문", address: destination, hours: "18:00-23:00", coords: { lat: c.lat - 0.005, lng: c.lng + 0.008 } },
-    { id: 3, name: `${destination} 카페`, cuisine: "카페", category: "카페", rating: 4.2, reviews: 640, image: "☕", price: "₩", description: "현지 인기 카페", tips: "오전 한가함", address: destination, hours: "08:00-20:00", coords: { lat: c.lat + 0.008, lng: c.lng + 0.005 } },
-    { id: 4, name: `${destination} 해산물 식당`, cuisine: "해산물", category: "해산물", rating: 4.4, reviews: 980, image: "🦞", price: "₩₩₩", description: "신선한 현지 해산물", tips: "점심 추천", address: destination, hours: "11:00-20:00", coords: { lat: c.lat - 0.008, lng: c.lng - 0.008 } },
+    { id: 1, name: `${destination} 대표 레스토랑`, cuisine: "현지음식", category: "현지음식", rating: 4.5, reviews: 1200, image: getImageUrl(`${destination} 대표 레스토랑`), price: "₩₩", description: `${destination} 현지 대표 요리`, tips: "예약 추천", address: destination, hours: "11:00-21:00", coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
+    { id: 2, name: `${destination} 전통 시장 음식`, cuisine: "길거리음식", category: "길거리음식", rating: 4.3, reviews: 870, image: getImageUrl(`${destination} 전통 시장 음식`), price: "₩", description: "현지인이 사랑하는 맛", tips: "저녁 방문", address: destination, hours: "18:00-23:00", coords: { lat: c.lat - 0.005, lng: c.lng + 0.008 } },
+    { id: 3, name: `${destination} 카페`, cuisine: "카페", category: "카페", rating: 4.2, reviews: 640, image: getImageUrl(`${destination} 카페`), price: "₩", description: "현지 인기 카페", tips: "오전 한가함", address: destination, hours: "08:00-20:00", coords: { lat: c.lat + 0.008, lng: c.lng + 0.005 } },
+    { id: 4, name: `${destination} 해산물 식당`, cuisine: "해산물", category: "해산물", rating: 4.4, reviews: 980, image: getImageUrl(`${destination} 해산물 식당`), price: "₩₩₩", description: "신선한 현지 해산물", tips: "점심 추천", address: destination, hours: "11:00-20:00", coords: { lat: c.lat - 0.008, lng: c.lng - 0.008 } },
   ]
 }
 
@@ -495,15 +618,37 @@ const generateItinerary = (destination, dayCount) => {
   }))
 }
 
-const generateWeather = (dayCount) => {
-  const weatherData = [
-    { day: 1, maxTemp: 22, minTemp: 14, description: "맑음", humidity: 65, windSpeed: 11, uvIndex: 6 },
-    { day: 2, maxTemp: 24, minTemp: 16, description: "맑음", humidity: 60, windSpeed: 7, uvIndex: 7 },
-    { day: 3, maxTemp: 19, minTemp: 12, description: "흐림", humidity: 75, windSpeed: 14, uvIndex: 4 },
-    { day: 4, maxTemp: 26, minTemp: 18, description: "맑음", humidity: 55, windSpeed: 4, uvIndex: 7 },
-    { day: 5, maxTemp: 21, minTemp: 14, description: "비", humidity: 85, windSpeed: 18, uvIndex: 2 },
+const generateWeather = (dayCount, startDate) => {
+  const baseDate = startDate ? new Date(startDate) : new Date()
+  const weatherData = []
+  const descriptions = ["맑음", "맑음", "흐림", "맑음", "비", "흐림", "맑음"]
+  const temps = [
+    { max: 22, min: 14 },
+    { max: 24, min: 16 },
+    { max: 19, min: 12 },
+    { max: 26, min: 18 },
+    { max: 21, min: 14 },
+    { max: 23, min: 15 },
+    { max: 25, min: 17 },
   ]
-  return weatherData.slice(0, dayCount)
+  
+  for (let i = 0; i < dayCount && i < 7; i++) {
+    const date = new Date(baseDate)
+    date.setDate(date.getDate() + i)
+    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`
+    
+    weatherData.push({
+      day: i + 1,
+      date: dateStr,
+      maxTemp: temps[i].max,
+      minTemp: temps[i].min,
+      description: descriptions[i],
+      humidity: 55 + Math.floor(Math.random() * 30),
+      windSpeed: 4 + Math.floor(Math.random() * 15),
+      uvIndex: 2 + Math.floor(Math.random() * 6),
+    })
+  }
+  return weatherData
 }
 
 const generateRouteCoordinates = ({ lat, lng }) => {
@@ -515,4 +660,20 @@ const generateRouteCoordinates = ({ lat, lng }) => {
     [lat - 0.01, lng + 0.02],
     [lat - 0.02, lng - 0.01],
   ]
+}
+
+const getImageUrl = (name) => `https://picsum.photos/seed/${encodeURIComponent(name)}/800/600`
+
+// Fetch image URL from Supabase Edge Function 'fetch-image'
+const fetchImageFor = async (query) => {
+  try {
+    const res = await supabase.functions.invoke('fetch-image', { body: { query } })
+    // supabase.functions.invoke returns { data, error }
+    if (res?.data?.url) return res.data.url
+    if (res?.url) return res.url
+  } catch (e) {
+    console.log('fetchImageFor error', e?.message || String(e))
+  }
+  // local fallback image
+  return '/images/fallback.svg'
 }

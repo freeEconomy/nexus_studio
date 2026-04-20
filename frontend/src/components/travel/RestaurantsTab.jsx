@@ -34,7 +34,9 @@ export default function RestaurantsTab({ restaurants }) {
                     className="restaurant-card"
                     onClick={() => setSelectedRestaurant(restaurant)}
                   >
-                    <div className="restaurant-image">{restaurant.image}</div>
+                    <div className="restaurant-image">
+                      <img src={restaurant.image} alt={restaurant.name} loading="lazy" />
+                    </div>
                     <div className="restaurant-content">
                       <h4>{restaurant.name}</h4>
                       <div className="restaurant-rating">
@@ -59,7 +61,9 @@ export default function RestaurantsTab({ restaurants }) {
             <button className="modal-close" onClick={() => setSelectedRestaurant(null)}>✕</button>
             
             <div className="modal-header">
-              <div className="modal-image large">{selectedRestaurant.image}</div>
+              <div className="modal-image large">
+                <img src={selectedRestaurant.image} alt={selectedRestaurant.name} />
+              </div>
               <div className="modal-title">
                 <h2>{selectedRestaurant.name}</h2>
                 <p className="cuisine">{selectedRestaurant.cuisine}</p>
