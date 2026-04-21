@@ -1,6 +1,6 @@
-# AI Multi Agent
+# Nexus Studio
 
-여러 AI 모델에 동시에 질의하고 결과를 비교하는 웹 애플리케이션
+AI로 상상을 현실로 만드는 플랫폼
 
 ## 지원 모델 (모두 무료)
 
@@ -101,7 +101,7 @@ npm run dev
 │   ├── src/
 │   │   ├── pages/
 │   │   │   ├── Home.jsx
-│   │   │   ├── MultiAgent.jsx   ← 핵심
+│   │   │   ├── MultiAgent.jsx
 │   │   │   ├── WeeklyReport.jsx
 │   │   │   └── Stock.jsx
 │   │   ├── components/

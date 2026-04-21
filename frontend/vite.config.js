@@ -1,10 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// ⚠️ base에 본인의 GitHub 레포 이름을 입력하세요
-// 예: GitHub 레포가 https://github.com/username/ai-multi-agent 이면
-// base: '/ai-multi-agent/'
-export default defineConfig({
+// base path: '/' for local dev, '/nexus_studio/' for GitHub Pages production build
+export default defineConfig(({ command }) => ({
   plugins: [react()],
-  base: '/nexus_studio/', // 🔧 본인 레포 이름으로 변경
-})
+  base: command === 'build' ? '/nexus_studio/' : '/',
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    open: '/stock', // 대시보드(주식 메뉴)를 기본으로 열기
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 3000,
+    open: true,
+  },
+}))

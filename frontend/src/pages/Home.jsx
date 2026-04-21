@@ -34,7 +34,7 @@ export default function Home() {
     <div className="home">
       <div className="home-hero">
         <h1>AI Hub</h1>
-        <p>여러 AI 모델을 한 곳에서 활용하는 통합 플랫폼</p>
+        <p>AI로 상상을 현실로 만드는 플랫폼</p>
       </div>
       <div className="home-grid">
         {features.map(({ icon, title, desc, path }) => (
