@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { getKisToken } from '../_shared/kis-token.ts'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -27,20 +29,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const tokenResponse = await fetch('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ grant_type: 'client_credentials', appkey: appKey, appsecret: appSecret }),
-    })
-    const tokenData = await tokenResponse.json()
-    const accessToken = tokenData.access_token
-
-    if (!accessToken) {
-      return new Response(JSON.stringify({ error: 'Failed to get access token' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    const accessToken = await getKisToken(appKey, appSecret)
 
     const code = ticker.replace(/\.(KS|KQ)$/, '').padStart(6, '0')
     const url = new URL('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price')

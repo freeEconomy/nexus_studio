@@ -6,7 +6,8 @@
       "Bash(supabase --version)",
       "Bash(npx supabase *)",
       "Bash(supabase functions *)",
-      "WebFetch(domain:docs.foursquare.com)"
+      "WebFetch(domain:docs.foursquare.com)",
+      "Bash(supabase db *)"
     ]
   }
 }

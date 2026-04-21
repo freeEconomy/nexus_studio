@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Yahoo Finance 검색 사용 (Finnhub 무료 플랜 rate limit 우회)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,7 +10,6 @@ Deno.serve(async (req) => {
 
   try {
     const { query } = await req.json()
-
     if (!query) {
       return new Response(JSON.stringify({ error: 'Query is required' }), {
         status: 400,
@@ -17,25 +17,29 @@ Deno.serve(async (req) => {
       })
     }
 
-    const apiKey = Deno.env.get('FINNHUB_API_KEY')
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'API key not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0&listsCount=0`
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
 
-    const response = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${apiKey}`)
-    const data = await response.json()
-
-    if (data.error) {
-      return new Response(JSON.stringify({ error: data.error }), {
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: `Yahoo Finance error: ${response.status}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const results = (data.result || []).filter((item: any) => item.type === 'Common Stock').slice(0, 10)
+    const data = await response.json()
+
+    // 미국 주식만 (KS/KQ 제외, EQUITY 타입)
+    const results = (data.quotes || [])
+      .filter((q: any) =>
+        q.quoteType === 'EQUITY' &&
+        !/\.(KS|KQ|T|SS|SZ|HK|AX|L|PA|DE|MI|SW|AS|BR|LS|MC|OL|ST|HE|CO)$/i.test(q.symbol)
+      )
+      .slice(0, 10)
+      .map((q: any) => ({
+        symbol: q.symbol,
+        description: q.longname || q.shortname || q.symbol,
+      }))
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

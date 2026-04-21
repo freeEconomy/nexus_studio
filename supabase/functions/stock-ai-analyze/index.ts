@@ -5,6 +5,7 @@ const corsHeaders = {
 }
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const TAVILY_API_URL = 'https://api.tavily.com/search'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -27,39 +28,82 @@ Deno.serve(async (req) => {
       })
     }
 
-    const headers = {
+    const tavilyKey = Deno.env.get('TAVILY_API_KEY')
+
+    const groqHeaders = {
       Authorization: `Bearer ${groqKey}`,
       'Content-Type': 'application/json',
     }
 
-    const [analysisResponse, newsResponse] = await Promise.all([
+    // 1. Groq 투자 분석 + Tavily 뉴스 검색 병렬 실행
+    const tasks: Promise<any>[] = [
       fetch(GROQ_API_URL, {
         method: 'POST',
-        headers,
+        headers: groqHeaders,
         body: JSON.stringify({
           model: 'qwen/qwen3-32b',
           messages: [{ role: 'user', content: `${market} 주식 ${ticker}에 대한 투자 분석을 해주세요. 현재 시장 상황, 재무 지표, 미래 전망을 포함해서.` }],
           max_tokens: 1000,
         }),
       }),
-      fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: 'compound-beta-mini',
-          messages: [{ role: 'user', content: `${ticker} 관련 최신 뉴스 요약` }],
-          max_tokens: 500,
-        }),
-      }),
-    ])
+    ]
 
-    const analysisData = await analysisResponse.json()
-    const newsData = await newsResponse.json()
+    if (tavilyKey) {
+      tasks.push(
+        fetch(TAVILY_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: tavilyKey,
+            query: `${ticker} stock news latest 2024 2025`,
+            search_depth: 'basic',
+            include_answer: true,
+            max_results: 5,
+          }),
+        })
+      )
+    }
 
-    return new Response(JSON.stringify({
-      analysis: analysisData.choices?.[0]?.message?.content || '',
-      newsSummary: newsData.choices?.[0]?.message?.content || '',
-    }), {
+    const [analysisRes, tavilyRes] = await Promise.all(tasks)
+
+    const analysisData = await analysisRes.json()
+    const analysis = analysisData.choices?.[0]?.message?.content || ''
+
+    // 2. Tavily 결과 → Groq llama-3.1-8b-instant 로 한국어 요약
+    let newsSummary = ''
+
+    if (tavilyRes) {
+      const tavilyData = await tavilyRes.json()
+      const context = tavilyData.answer
+        || tavilyData.results?.slice(0, 5).map((r: any) => r.content).join('\n\n')
+        || ''
+
+      if (context) {
+        const summaryRes = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: groqHeaders,
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            messages: [
+              {
+                role: 'system',
+                content: '당신은 금융 뉴스 요약 전문가입니다. 검색 결과를 바탕으로 핵심 내용만 한국어로 간결하게 요약하세요.',
+              },
+              {
+                role: 'user',
+                content: `${ticker} 관련 최신 뉴스를 다음 검색 결과를 바탕으로 한국어로 3~4줄로 요약해주세요:\n\n${context}`,
+              },
+            ],
+            max_tokens: 300,
+            temperature: 0.3,
+          }),
+        })
+        const summaryData = await summaryRes.json()
+        newsSummary = summaryData.choices?.[0]?.message?.content || ''
+      }
+    }
+
+    return new Response(JSON.stringify({ analysis, newsSummary }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {

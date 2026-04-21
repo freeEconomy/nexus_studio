@@ -84,13 +84,17 @@ const toDateStr = (ts) => new Date(ts * 1000).toISOString().split('T')[0]
 // ── Reusable Chart Widget ────────────────────────────────
 function ChartWidget({ ticker, market, height = 300, type = 'candlestick', startDate, endDate }) {
   const containerRef = useRef(null)
+  const [chartError, setChartError] = useState(null)
+  const [chartEmpty, setChartEmpty] = useState(false)
 
   useEffect(() => {
     if (!containerRef.current || !ticker) return
     let destroyed = false
+    setChartError(null)
+    setChartEmpty(false)
 
     const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
+      width: containerRef.current.clientWidth || 600,
       height,
       layout: {
         background: { type: 'solid', color: '#ffffff' },
@@ -129,7 +133,10 @@ function ChartWidget({ ticker, market, height = 300, type = 'candlestick', start
     supabase.functions
       .invoke(fn, { body: { ticker, period: 'D', startDate: startDate || '', endDate: endDate || '' } })
       .then(({ data, error }) => {
-        if (destroyed || error || !Array.isArray(data)) return
+        if (destroyed) return
+        if (error) { setChartError(error.message || '차트 로딩 실패'); return }
+        if (data?.error) { setChartError(data.error); return }
+        if (!Array.isArray(data) || data.length === 0) { setChartEmpty(true); return }
         const seen = new Set()
         const mapped = data
           .filter(d => d.time && d.close != null)
@@ -141,12 +148,14 @@ function ChartWidget({ ticker, market, height = 300, type = 'candlestick', start
           })
           .filter(d => { if (seen.has(d.time)) return false; seen.add(d.time); return true })
           .sort((a, b) => (a.time > b.time ? 1 : -1))
-        if (mapped.length > 0 && !destroyed) {
+        if (mapped.length > 0) {
           series.setData(mapped)
           chart.timeScale().fitContent()
+        } else {
+          setChartEmpty(true)
         }
       })
-      .catch(() => {})
+      .catch(e => { if (!destroyed) setChartError(e.message) })
 
     const ro = new ResizeObserver(entries => {
       if (destroyed) return
@@ -162,6 +171,16 @@ function ChartWidget({ ticker, market, height = 300, type = 'candlestick', start
     }
   }, [ticker, market, startDate, endDate, type, height])
 
+  if (chartError) return (
+    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: 13 }}>
+      차트 오류: {chartError}
+    </div>
+  )
+  if (chartEmpty) return (
+    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>
+      차트 데이터 없음
+    </div>
+  )
   return <div ref={containerRef} style={{ width: '100%', minHeight: height }} />
 }
 
@@ -241,10 +260,11 @@ function DashboardTab() {
       supabase.functions.invoke('stock-us-index', { body: {} }),
       supabase.functions.invoke('stock-kr-index', { body: {} }),
       supabase.from('portfolio').select('*').limit(8),
-      supabase.functions.invoke('query-groq', {
+      supabase.functions.invoke('query-tavily', {
         body: {
-          model: 'compound-beta-mini',
-          messages: [{ role: 'user', content: '오늘 글로벌 주식 시장의 주요 뉴스 3가지를 한국어로 간략하게 알려주세요.' }],
+          query: 'global stock market major news today S&P500 NASDAQ',
+          summarize: true,
+          lang: 'ko',
         },
       }),
     ])
@@ -329,7 +349,7 @@ function DashboardTab() {
                   <p className="empty-msg">포트폴리오 데이터가 없습니다</p>
                 ) : portfolio.map((s, i) => (
                   <div key={i} className={`pf-mini-item ${upDown(s.changePercent)}`}>
-                    <span className="pf-mini-ticker">{s.ticker}</span>
+                    <span className="pf-mini-ticker">{s.name || s.ticker}</span>
                     <span className="pf-mini-mkt">{s.market}</span>
                     <span className={`pf-mini-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
                     <span className="pf-mini-arrow">{s.changePercent >= 0 ? '▲' : '▼'}</span>
@@ -510,10 +530,11 @@ function KRStocksTab() {
     setLoading(true)
     const [idxRes, newsRes] = await Promise.allSettled([
       supabase.functions.invoke('stock-kr-index', { body: {} }),
-      supabase.functions.invoke('query-groq', {
+      supabase.functions.invoke('query-tavily', {
         body: {
-          model: 'compound-beta-mini',
-          messages: [{ role: 'user', content: '오늘 한국 코스피 코스닥 주요 뉴스 5가지를 한국어로 간략하게 알려주세요.' }],
+          query: '한국 코스피 코스닥 주요 뉴스 오늘 KOSPI KOSDAQ',
+          summarize: true,
+          lang: 'ko',
         },
       }),
     ])
@@ -774,7 +795,7 @@ function PortfolioTab() {
                       <p>{aiData.analysis || '—'}</p>
                     </div>
                     <div className="ai-block">
-                      <span className="ai-badge compound">Compound · 뉴스 요약</span>
+                      <span className="ai-badge compound">Tavily · 뉴스 요약</span>
                       <p>{aiData.newsSummary || '—'}</p>
                     </div>
                   </div>
@@ -796,6 +817,7 @@ function PortfolioTab() {
 function SearchTab() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
+  const [searched, setSearched] = useState(false)
   const [searching, setSearching] = useState(false)
   const [detail, setDetail] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -803,14 +825,18 @@ function SearchTab() {
   const doSearch = async () => {
     if (!query.trim()) return
     setSearching(true)
+    setSearched(false)
     setDetail(null)
     const [usRes, krRes] = await Promise.allSettled([
       supabase.functions.invoke('stock-us-search', { body: { query } }),
       supabase.functions.invoke('stock-kr-search', { body: { query } }),
     ])
-    const us = usRes.status === 'fulfilled' ? (usRes.value.data || []).map(s => ({ ...s, market: 'US' })) : []
-    const kr = krRes.status === 'fulfilled' ? (krRes.value.data || []).map(s => ({ ...s, market: 'KR' })) : []
+    const us = usRes.status === 'fulfilled' && Array.isArray(usRes.value.data)
+      ? usRes.value.data.map(s => ({ ...s, market: 'US' })) : []
+    const kr = krRes.status === 'fulfilled' && Array.isArray(krRes.value.data)
+      ? krRes.value.data.map(s => ({ ...s, market: 'KR' })) : []
     setResults([...us.slice(0, 6), ...kr.slice(0, 6)])
+    setSearched(true)
     setSearching(false)
   }
 
@@ -891,18 +917,24 @@ function SearchTab() {
       </div>
 
       {/* Result list */}
-      {results.length > 0 && !detail && (
-        <div className="sr-list">
-          {results.map((s, i) => (
-            <div key={i} className="sr-item" onClick={() => selectStock(s)}>
-              <div className="sr-left">
-                <span className="sr-ticker">{s.symbol || s.ticker}</span>
-                <span className="sr-name">{s.description || s.name}</span>
+      {!detail && searched && (
+        results.length > 0 ? (
+          <div className="sr-list">
+            {results.map((s, i) => (
+              <div key={i} className="sr-item" onClick={() => selectStock(s)}>
+                <div className="sr-left">
+                  <span className="sr-ticker">{s.symbol || s.ticker}</span>
+                  <span className="sr-name">{s.description || s.name}</span>
+                </div>
+                <span className={`sr-badge ${s.market === 'US' ? 'us' : 'kr'}`}>{s.market}</span>
               </div>
-              <span className={`sr-badge ${s.market === 'US' ? 'us' : 'kr'}`}>{s.market}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-msg" style={{ marginTop: '2rem', textAlign: 'center' }}>
+            "{query}" 검색 결과가 없습니다
+          </p>
+        )
       )}
 
       {detailLoading && <Spinner />}
@@ -982,7 +1014,7 @@ function SearchTab() {
                 <p>{detail.ai?.analysis || '분석 데이터 없음'}</p>
               </div>
               <div className="ai-block">
-                <span className="ai-badge compound">Compound · 최신 뉴스 요약</span>
+                <span className="ai-badge compound">Tavily · 최신 뉴스 요약</span>
                 <p>{detail.ai?.newsSummary || '뉴스 요약 없음'}</p>
               </div>
             </div>
