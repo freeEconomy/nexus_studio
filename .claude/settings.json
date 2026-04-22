@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -l \"OPTIONS\\\\|corsHeaders\" /Users/mrs2002nate.com/WebRoot/nexus_studio/supabase/functions/*/index.ts)",
+      "Bash(grep -rL \"OPTIONS\" /Users/mrs2002nate.com/WebRoot/nexus_studio/supabase/functions/stock-*/index.ts)",
+      "Bash(wait)",
+      "Bash(curl -s https://m.stock.naver.com/api/index/KOSPI/summary -H 'User-Agent: Mozilla/5.0 \\(iPhone; CPU iPhone OS 16_0 like Mac OS X\\)' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s https://polling.finance.naver.com/api/realtime/domestic/index/KOSPI -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s https://polling.finance.naver.com/api/realtime/domestic/index/KOSDAQ -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['datas'][0]; print\\('Price:', d['closePriceRaw'], 'Change%:', d['fluctuationsRatioRaw'], 'Status:', d['marketStatus']\\)\")",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=NVDA&quotesCount=5&newsCount=0' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(python3 -c ':*)",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90&quotesCount=10&newsCount=0' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=005930&quotesCount=5&newsCount=0' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=samsung&quotesCount=8&newsCount=0' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s 'https://ac.finance.naver.com/ac?q=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90&q_enc=UTF-8&st=1&r_format=json&r_enc=UTF-8&r_lt=1&r_unicode=0&r_escape=1' -H 'Referer: https://finance.naver.com')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -sv 'https://ac.finance.naver.com/ac?q=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90&q_enc=UTF-8&st=1&r_format=json&r_enc=UTF-8&r_lt=1&r_unicode=0&r_escape=1' -H 'Referer: https://finance.naver.com')",
+      "Bash(curl -s 'https://m.stock.naver.com/front-api/v1/search/stocks?query=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90&page=1&pageSize=5' -H 'User-Agent: Mozilla/5.0 \\(iPhone; CPU iPhone OS 16_0 like Mac OS X\\)' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s https://api.stock.naver.com/index/KOSPI/summary -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s 'https://m.stock.naver.com/api/search/stocks?query=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90' -H 'User-Agent: Mozilla/5.0 \\(iPhone; CPU iPhone OS 16_0 like Mac OS X\\)' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s https://polling.finance.naver.com/api/realtime/domestic/stock/005930 -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s 'https://polling.finance.naver.com/api/realtime/domestic/stock?query=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90' -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://m.stock.naver.com/')",
+      "Bash(curl -s 'https://stock.naver.com/api/search?keyword=%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90&type=stock' -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://stock.naver.com/')",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=삼성전자&quotesCount=10&newsCount=0' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v1/finance/search?q=NVDA&quotesCount=5&newsCount=0&lang=ko-KR' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ2MDI1NDgsImV4cCI6MjA2MDE3ODU0OH0.fYHBpCmpSHPpEE0qBzjUVj3GnMxnBF1jnxHJPlZFYNo' -d '{\"query\": \"삼성전자\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"삼성전자\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"삼성전자\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"samsung\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-us-chart -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"ticker\":\"SPY\",\"period\":\"D\",\"startDate\":\"2026-01-22\",\"endDate\":\"2026-04-22\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-chart -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"ticker\":\"005930.KS\",\"period\":\"D\"}')",
+      "Bash(curl -s 'https://query1.finance.yahoo.com/v8/finance/chart/005930.KS?interval=1d&range=3mo' -H 'User-Agent: Mozilla/5.0')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-chart -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"ticker\":\"005930.KS\",\"period\":\"D\",\"startDate\":\"2026-01-22\",\"endDate\":\"2026-04-22\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-ai-analyze -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"ticker\":\"NVDA\",\"market\":\"US\"}')",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"엔비\"}')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, ensure_ascii=False, indent=2\\)\\)\")",
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-us-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"__TRACKED_VAR__\"}')"
+    ]
+  }
+}
