@@ -298,7 +298,7 @@ function DashboardTab() {
   return (
     <div className="dash-tab">
       <div className="dash-header">
-        <h1 className="dash-title">시장 대시보드</h1>
+        <h1 className="dash-title">Markets</h1>
         <span className="dash-time">
           {new Date().toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -429,7 +429,7 @@ function USStocksTab() {
 
   return (
     <div className="us-tab">
-      <h2 className="tab-title">미국주식</h2>
+      <h2 className="tab-title">US Markets</h2>
       {loading ? <Spinner /> : (
         <>
           {/* Sector Heatmap */}
@@ -554,7 +554,7 @@ function KRStocksTab() {
 
   return (
     <div className="kr-tab">
-      <h2 className="tab-title">국내주식</h2>
+      <h2 className="tab-title">KR Markets</h2>
       {loading ? <Spinner /> : (
         <>
           {/* KOSPI / KOSDAQ */}
@@ -742,7 +742,10 @@ function PortfolioTab() {
                   onClick={() => handleCardClick(s)}
                 >
                   <div className="pfc-header">
-                    <span className="pfc-ticker">{s.ticker}</span>
+                    <div className="pfc-ticker-wrap">
+                      <span className="pfc-ticker">{s.ticker}</span>
+                      {s.name && <span className="pfc-name">{s.name}</span>}
+                    </div>
                     <span className="pfc-emoji">{s.changePercent >= 0 ? '📈' : '📉'}</span>
                   </div>
                   <div className="pfc-price">{fmtPrice(s.currentPrice, s.market)}</div>

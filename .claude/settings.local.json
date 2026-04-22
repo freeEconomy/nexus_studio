@@ -7,7 +7,10 @@
       "Bash(npx supabase *)",
       "Bash(supabase functions *)",
       "WebFetch(domain:docs.foursquare.com)",
-      "Bash(supabase db *)"
+      "Bash(supabase db *)",
+      "Bash(npx vite *)",
+      "Read(//c/c/WebRoot/nexus_studio/frontend/**)",
+      "Bash(npm install *)"
     ]
   }
 }

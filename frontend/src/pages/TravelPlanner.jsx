@@ -491,7 +491,7 @@ const generateTravelData = async (destination, dayCount) => {
   return (
     <div className="travel-planner">
       <div className="tp-header">
-        <h1>✈️ 여행 플래너</h1>
+        <h1>Journey</h1>
         <p>나만의 맞춤 여행 계획을 만들어보세요</p>
       </div>
       {isGenerated && (

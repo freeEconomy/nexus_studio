@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, Link } from 'react-router-dom'
 import './Navbar.css'
 
 const menus = [
-  { path: '/', label: '홈' },
-  { path: '/weekly-report', label: '주간보고' },
-  { path: '/multi-agent', label: '멀티 AI' },
-  { path: '/travel-planner', label: '여행플래너' },
-  { path: '/stock', label: '주식' },
+  { path: '/weekly-report', label: 'Nexus Agent' },
+  { path: '/multi-agent', label: 'AI Lab' },
+  { path: '/travel-planner', label: 'Journey' },
+  { path: '/stock', label: 'Markets' },
 ]
 
 export default function Navbar() {
@@ -45,7 +44,7 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-inner">
-        <span className="navbar-logo">🎯 Nexus Studio</span>
+        <Link to="/" className="navbar-logo">🎯 Nexus Studio</Link>
 
         {/* 햄버거 (모바일) */}
         <button className={`hamburger ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} aria-label="메뉴">
