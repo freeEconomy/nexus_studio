@@ -100,7 +100,26 @@
   align-items: flex-start;
 }
 .chat-bubble.user { flex-direction: row-reverse; }
-.chat-avatar { font-size: 1.3rem; flex-shrink: 0; margin-top: 2px; }
+.chat-avatar {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ai-avatar {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(102,126,234,0.4);
+}
+.user-avatar {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #94a3b8;
+}
 .chat-content {
   max-width: 78%;
   padding: 0.65rem 0.9rem;

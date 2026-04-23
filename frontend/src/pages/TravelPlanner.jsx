@@ -49,8 +49,8 @@ export default function TravelPlanner() {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-   const handleSubmit = async () => {
-     if (!formData.destination || !formData.startDate || !formData.endDate) {
+   const handleSubmit = async (data = formData) => {
+     if (!data.destination || !data.startDate || !data.endDate) {
        setError("여행지와 기간을 입력해주세요.")
        return
      }
@@ -59,29 +59,29 @@ export default function TravelPlanner() {
      setError("")
 
      try {
-       const destination = formData.destination
-       const startDate = new Date(formData.startDate)
-       const endDate = new Date(formData.endDate)
+       const destination = data.destination
+       const startDate = new Date(data.startDate)
+       const endDate = new Date(data.endDate)
        const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
 
        // API 연동 (실패시 자동으로 더미데이터로 폴백)
        let generatedData;
        
        try {
-         generatedData = await generateTravelData(destination, dayCount);
+         generatedData = await generateTravelData(destination, dayCount, data.startDate);
        } catch (apiError) {
          console.log("generateTravelData 실패, 최소 fallback 사용:", apiError.message);
          const coordinates = await geocodeDestination(destination)
          generatedData = {
            destination,
-           startDate: formData.startDate,
-           endDate: formData.endDate,
+         startDate: data.startDate,
+         endDate: data.endDate,
            dayCount,
            coordinates,
            places: getMinimalFallback(destination, coordinates, 'places'),
            restaurants: getMinimalFallback(destination, coordinates, 'restaurants'),
            itinerary: generateItinerary(destination, dayCount),
-           weather: generateWeather(dayCount),
+           weather: generateWeather(dayCount, data.startDate),
            routeCoordinates: generateRouteCoordinates(coordinates),
          }
        }
@@ -93,11 +93,11 @@ export default function TravelPlanner() {
        // 최근 검색 저장
        saveRecentSearch({
          destination,
-         startDate: formData.startDate,
-         endDate: formData.endDate,
-         adults: formData.adults,
-         children: formData.children,
-         childAges: formData.childAges,
+         startDate: data.startDate,
+         endDate: data.endDate,
+         adults: data.adults,
+         children: data.children,
+         childAges: data.childAges,
        })
      } catch (err) {
        setError(err.message)
@@ -152,19 +152,27 @@ const normalizeItinerary = (raw, destination, dayCount) => {
   }
 }
 
-const generateTravelData = async (destination, dayCount) => {
+const generateTravelData = async (destination, dayCount, startDate) => {
   const coordinates = await geocodeDestination(destination)
 
-  // Foursquare 실패 시 Groq compound-beta-mini로 장소 데이터 생성
+  // query-places 실패 시 Groq compound-beta-mini로 장소 데이터 생성 (프론트 폴백)
   const generatePlacesWithAI = async (type) => {
-    const label = type === 'restaurants' ? '맛집과 레스토랑' : '관광 명소'
+    const isRestaurant = type === 'restaurants'
+    const label = isRestaurant ? '맛집과 레스토랑' : '관광 명소'
     try {
       const { data, error } = await supabase.functions.invoke('query-groq', {
         body: {
-          model: 'compound-beta-mini',
+          model: 'llama-3.1-8b-instant',
           messages: [{
             role: 'user',
-            content: `${destination}의 실제 유명한 ${label} 8곳을 JSON 배열로만 답해줘. 형식: [{"name":"장소명","category":"카테고리","rating":4.2,"address":"주소","hours":"10:00~22:00","price":"가격대","duration":"소요시간","description":"한 줄 설명","tips":"방문 팁"}] 다른 텍스트 없이 JSON 배열만.`
+            content: `${destination}의 실제 유명한 ${label} 8곳을 JSON 배열로만 답해줘.
+규칙:
+- name: 한국어 표기를 먼저, 현지 문자는 괄호 안에. 예: "아사쿠사지 (浅草寺)", "에펠탑 (Tour Eiffel)"
+- category, description, tips: 반드시 한국어로 작성
+- address: 현지어로
+- imageKeyword: 사진 검색용 영어 키워드 2~4단어. 예: "Senso-ji Temple Tokyo", "Paris cafe"
+형식: [{"name":"한국어명 (현지문자)","category":"한국어 카테고리","rating":4.2,"address":"현지어 주소","hours":"영업시간","price":"가격대","duration":"소요시간","description":"한국어 설명","tips":"한국어 팁","imageKeyword":"English keyword"}]
+다른 텍스트 없이 JSON 배열만.`
           }]
         }
       })
@@ -174,22 +182,37 @@ const generateTravelData = async (destination, dayCount) => {
       if (!match) return null
       const parsed = JSON.parse(match[0])
       if (!Array.isArray(parsed) || !parsed.length) return null
-      return parsed.map((p, i) => ({
-        id: i + 1,
-        name: p.name || `${destination} ${label} ${i + 1}`,
-        category: p.category || label,
-        rating: p.rating ? Math.round(Number(p.rating) * 10) / 10 : null,
-        reviews: 0,
-        image: getImageUrl(p.name || destination),
-        address: p.address || destination,
-        hours: p.hours || '정보 없음',
-        openNow: null,
-        price: p.price || '정보 없음',
-        duration: p.duration || '1~2시간',
-        description: p.description || '',
-        tips: p.tips || '',
-        coords: { lat: coordinates.lat, lng: coordinates.lng },
+
+      // 이미지 병렬 조회 (Unsplash → Pexels → Picsum)
+      const places = await Promise.all(parsed.map(async (p, i) => {
+        const imageKeyword = p.imageKeyword || `${destination} ${isRestaurant ? 'restaurant' : 'attraction'}`
+        const categoryEn = `${destination} ${isRestaurant ? 'restaurant food' : 'landmark tourist'}`
+        let imageUrl = getImageUrl(imageKeyword)
+        try {
+          const { data: imgData } = await supabase.functions.invoke('fetch-image', {
+            body: { query: imageKeyword, categoryQuery: categoryEn }
+          })
+          if (imgData?.url) imageUrl = imgData.url
+        } catch { /* use picsum fallback */ }
+
+        return {
+          id: i + 1,
+          name: p.name || `${destination} ${label} ${i + 1}`,
+          category: p.category || label,
+          rating: p.rating ? Math.round(Number(p.rating) * 10) / 10 : null,
+          reviews: 0,
+          image: imageUrl,
+          address: p.address || destination,
+          hours: p.hours || '정보 없음',
+          openNow: null,
+          price: p.price || '정보 없음',
+          duration: p.duration || '1~2시간',
+          description: p.description || '',
+          tips: p.tips || '',
+          coords: { lat: coordinates.lat, lng: coordinates.lng },
+        }
       }))
+      return places
     } catch {
       return null
     }
@@ -210,7 +233,7 @@ const generateTravelData = async (destination, dayCount) => {
     // 3. AI 일정 생성
     supabase.functions.invoke('query-groq', {
       body: {
-        model: "groq/compound-mini",
+        model: "llama-3.1-8b-instant",
         messages: [{
           role: "system",
           content: "너는 전문 여행 가이드야. 여행객 입장에서 정말 필요한 실용적인 정보를 센스있게 잘 설명하고 찾아봐줘. 현지인들이 실제 가는 곳 위주로 추천하고, 관광객 함정에 빠지지 않도록 솔직하게 조언해줘."
@@ -231,7 +254,7 @@ const generateTravelData = async (destination, dayCount) => {
   ])
 
   // 날씨: 3시간 예보 → 일별 변환
-  let weather = generateWeather(dayCount)
+  let weather = generateWeather(dayCount, startDate)
   if (weatherRes.status === 'fulfilled') {
     const forecasts = weatherRes.value.data?.forecasts
     if (forecasts?.length > 0) {
@@ -320,16 +343,16 @@ const generateTravelData = async (destination, dayCount) => {
 
   // 최근 검색 불러오기
   const loadRecentSearch = (search) => {
-    setFormData({
+    const updatedFormData = {
       destination: search.destination,
       startDate: search.startDate,
       endDate: search.endDate,
       adults: search.adults,
       children: search.children,
       childAges: search.childAges || "",
-    })
+    }
+    setFormData(updatedFormData)
     setShowRecentSearches(false)
-    handleSubmit()
   }
 
   // 컴포넌트 마운트 시 최근 검색 불러오기
@@ -360,7 +383,12 @@ const generateTravelData = async (destination, dayCount) => {
         <div className="tp-form-container">
           <div className="tp-form-content">
             <h2>여행 계획하기</h2>
-            {error && <div className="error-message">{error}</div>}
+            {error && (
+              <div className="error-message">
+                {error}
+                <button className="error-close" onClick={() => setError("")}>×</button>
+              </div>
+            )}
             <div className="form-group">
               <label htmlFor="destination">여행지 *</label>
               <input
@@ -442,7 +470,7 @@ const generateTravelData = async (destination, dayCount) => {
               )}
               <button
                 className="btn-submit"
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={status === "loading"}
               >
                 {status === "loading" ? (
@@ -481,9 +509,9 @@ const generateTravelData = async (destination, dayCount) => {
       <div className="tp-content-wrapper">
         {activeTab === "places" && <PlacesTab places={travelData.places} destination={travelData.destination} />}
         {activeTab === "restaurants" && <RestaurantsTab restaurants={travelData.restaurants} destination={travelData.destination} />}
-        {activeTab === "itinerary" && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} />}
+        {activeTab === "itinerary" && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} dayCount={travelData.dayCount} />}
         {activeTab === "map" && <MapTab places={travelData.places} restaurants={travelData.restaurants} destination={travelData.destination} coordinates={travelData.coordinates} routeCoordinates={travelData.routeCoordinates} />}
-        {activeTab === "weather" && <WeatherTab weather={travelData.weather} destination={travelData.destination} />}
+        {activeTab === "weather" && <WeatherTab weather={travelData.weather} destination={travelData.destination} startDate={travelData.startDate} />}
       </div>
     )
   }

@@ -35,7 +35,12 @@ export default function RestaurantsTab({ restaurants }) {
                     onClick={() => setSelectedRestaurant(restaurant)}
                   >
                     <div className="restaurant-image">
-                      <img src={restaurant.image} alt={restaurant.name} loading="lazy" />
+                      <img
+                        src={restaurant.image}
+                        alt={restaurant.name}
+                        loading="lazy"
+                        onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/food${restaurant.id}/400/300` }}
+                      />
                     </div>
                     <div className="restaurant-content">
                       <h4>{restaurant.name}</h4>
@@ -64,7 +69,11 @@ export default function RestaurantsTab({ restaurants }) {
             
             <div className="modal-header">
               <div className="modal-image large">
-                <img src={selectedRestaurant.image} alt={selectedRestaurant.name} />
+                <img
+                  src={selectedRestaurant.image}
+                  alt={selectedRestaurant.name}
+                  onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/food${selectedRestaurant.id}/800/600` }}
+                />
               </div>
               <div className="modal-title">
                 <h2>{selectedRestaurant.name}</h2>
@@ -104,6 +113,20 @@ export default function RestaurantsTab({ restaurants }) {
                 <label>💡 팁</label>
                 <p>{selectedRestaurant.tips}</p>
               </div>
+
+              {selectedRestaurant.coords && (
+                <div className="info-item">
+                  <label>🗺️ 위치</label>
+                  <iframe
+                    title="map"
+                    width="100%"
+                    height="200"
+                    frameBorder="0"
+                    style={{ borderRadius: '8px', marginTop: '4px' }}
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedRestaurant.coords.lng - 0.012},${selectedRestaurant.coords.lat - 0.008},${selectedRestaurant.coords.lng + 0.012},${selectedRestaurant.coords.lat + 0.008}&layer=mapnik&marker=${selectedRestaurant.coords.lat},${selectedRestaurant.coords.lng}`}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

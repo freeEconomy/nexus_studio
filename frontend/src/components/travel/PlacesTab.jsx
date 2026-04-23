@@ -57,7 +57,12 @@ export default function PlacesTab({ places, destination }) {
             onClick={() => setSelectedPlace(place)}
           >
             <div className="place-image">
-              <img src={place.image} alt={place.name} loading="lazy" />
+              <img
+                src={place.image}
+                alt={place.name}
+                loading="lazy"
+                onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/landmark${place.id}/400/300` }}
+              />
             </div>
             <div className="place-content">
               <h3>{place.name}</h3>
@@ -85,7 +90,11 @@ export default function PlacesTab({ places, destination }) {
             
             <div className="modal-header">
               <div className="modal-image">
-                <img src={selectedPlace.image} alt={selectedPlace.name} />
+                <img
+                  src={selectedPlace.image}
+                  alt={selectedPlace.name}
+                  onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/landmark${selectedPlace.id}/800/600` }}
+                />
               </div>
               <div className="modal-title">
                 <h2>{selectedPlace.name}</h2>
@@ -130,6 +139,20 @@ export default function PlacesTab({ places, destination }) {
                 <label>💡 팁</label>
                 <p>{selectedPlace.tips}</p>
               </div>
+
+              {selectedPlace.coords && (
+                <div className="info-item">
+                  <label>🗺️ 위치</label>
+                  <iframe
+                    title="map"
+                    width="100%"
+                    height="200"
+                    frameBorder="0"
+                    style={{ borderRadius: '8px', marginTop: '4px' }}
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedPlace.coords.lng - 0.012},${selectedPlace.coords.lat - 0.008},${selectedPlace.coords.lng + 0.012},${selectedPlace.coords.lat + 0.008}&layer=mapnik&marker=${selectedPlace.coords.lat},${selectedPlace.coords.lng}`}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

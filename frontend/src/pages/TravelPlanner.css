@@ -462,7 +462,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   border-bottom: 1px solid rgba(255,255,255,0.08);
   position: sticky;
   top: 60px;
-  z-index: 50;
+  z-index: 500;
   backdrop-filter: blur(20px);
 }
 
@@ -855,6 +855,10 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08);
   margin-bottom: 1.5rem;
+  /* Leaflet 내부 z-index를 이 컨테이너 안에 격리 */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
 }
 
 .map-popup { padding: 0.75rem; min-width: 200px; }
@@ -868,11 +872,22 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   display: flex;
   gap: 2rem;
   justify-content: center;
+  align-items: center;
   flex-wrap: wrap;
-  padding: 1.5rem;
+  padding: 1rem 1.5rem;
   background: rgba(255,255,255,0.04);
   border-radius: 12px;
   border: 1px solid rgba(255,255,255,0.08);
+}
+.tile-provider-badge {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: #475569;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  white-space: nowrap;
 }
 
 .travel-map-container { position: relative; }

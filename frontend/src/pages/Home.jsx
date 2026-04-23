@@ -119,7 +119,7 @@ export default function Home() {
         <div className="hero-content">
           <div className="hero-eyebrow">
             <span className="pulse-dot" />
-            AI-Powered Platform
+            AI Creation Platform
           </div>
           <h1 className="hero-title">
             <span className="gradient-text">Nexus Studio</span>

@@ -1,12 +1,19 @@
 import React from 'react'
 
-export default function WeatherTab({ weather, destination }) {
+export default function WeatherTab({ weather, destination, startDate }) {
   if (!weather || weather.length === 0) {
     return (
       <div className="tp-tab-content">
         <p className="empty-state">날씨 정보를 준비 중입니다.</p>
       </div>
     )
+  }
+
+  const getActualDate = (dayIndex) => {
+    if (!startDate) return `Day ${dayIndex + 1}`
+    const date = new Date(startDate)
+    date.setDate(date.getDate() + dayIndex)
+    return `${date.getMonth() + 1}/${date.getDate()}`
   }
 
   const getWeatherEmoji = (description) => {
@@ -38,7 +45,7 @@ export default function WeatherTab({ weather, destination }) {
       <div className="weather-grid">
         {weather.map(day => (
           <div key={day.day} className="weather-card">
-            <div className="weather-day">Day {day.day}</div>
+            <div className="weather-day">{getActualDate(day.day - 1)}</div>
             
             <div className="weather-emoji">
               {getWeatherEmoji(day.description)}

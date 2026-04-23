@@ -13,7 +13,7 @@ const MODELS = [
     color: '#ef4444',
     icon: '🌐',
     fn: 'query-groq',
-    model: 'groq/compound-mini',  // ← compound → compound-mini
+    model: 'compound-beta-mini',
   },
   {
     id: 'llama4scout',
@@ -44,54 +44,113 @@ const MODELS = [
   },
 ]
 
-const STATUS = {
-  IDLE: 'idle',
-  LOADING: 'loading',
-  DONE: 'done',
-  ERROR: 'error',
+const STATUS = { IDLE: 'idle', LOADING: 'loading', DONE: 'done', ERROR: 'error' }
+
+const initResult = () => ({
+  status: STATUS.IDLE,
+  text: '',
+  time: null,
+  raw: '',
+  display: '',
+  thinking: false,
+})
+
+// Parse <think>...</think> blocks out of streamed raw text.
+// Returns display (text outside think blocks) and thinking (still inside a think block).
+// Handles partial tags split across SSE chunks via trailing-tag regex strip.
+function parseThinkContent(raw) {
+  let display = ''
+  let thinking = false
+  let i = 0
+  while (i < raw.length) {
+    if (!thinking) {
+      const start = raw.indexOf('<think>', i)
+      if (start === -1) {
+        let rest = raw.slice(i)
+        // Strip any trailing partial <think> / </think> tag
+        rest = rest.replace(/<\/?(?:t(?:h(?:i(?:n(?:k>?)?)?)?)?)?$/, '')
+        display += rest
+        break
+      }
+      display += raw.slice(i, start)
+      i = start + 7
+      thinking = true
+    } else {
+      const end = raw.indexOf('</think>', i)
+      if (end === -1) break // still inside think block
+      i = end + 8
+      thinking = false
+    }
+  }
+  return { display, thinking }
 }
 
-async function callEdgeFunction(fnName, body) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(err || `HTTP ${res.status}`)
+async function streamModelResponse({ fnName, body, onChunk, onDone, onError }) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(err || `HTTP ${res.status}`)
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() // retain incomplete last line for next iteration
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') { onDone(); return }
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.error) { onError(new Error(parsed.error)); return }
+          const content = parsed.choices?.[0]?.delta?.content
+          if (content) onChunk(content)
+        } catch { /* skip malformed JSON */ }
+      }
+    }
+    onDone()
+  } catch (err) {
+    onError(err)
   }
-  return res.json()
 }
 
 export default function MultiAgent() {
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState(MODELS[0].id)
-  // 각 모델별 대화 내역 (messages 배열)
   const [histories, setHistories] = useState(
     Object.fromEntries(MODELS.map(m => [m.id, []]))
   )
-  // 각 모델별 응답 상태
   const [results, setResults] = useState(
-    Object.fromEntries(MODELS.map(m => [m.id, { status: STATUS.IDLE, text: '', time: null }]))
+    Object.fromEntries(MODELS.map(m => [m.id, initResult()]))
   )
   const textareaRef = useRef(null)
   const chatContainerRef = useRef(null)
 
   const isLoading = Object.values(results).some(r => r.status === STATUS.LOADING)
-  const hasResults = Object.values(results).some(r => r.status === STATUS.DONE || r.status === STATUS.ERROR)
+  const hasContent = Object.values(histories).some(h => h.length > 0) ||
+    Object.values(results).some(r => r.status === STATUS.ERROR)
 
-  // 페이지 로드 시 입력창에 자동 포커스
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (textareaRef.current) textareaRef.current.focus()
   }, [])
 
-  // 채팅 컨테이너 자동 스크롤
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
@@ -102,57 +161,77 @@ export default function MultiAgent() {
     if (!query.trim() || isLoading) return
 
     const userMessage = query.trim()
+    setQuery('')
 
-    // 초기화
+    // Show user message immediately in all tabs
+    setHistories(Object.fromEntries(
+      MODELS.map(m => [m.id, [{ role: 'user', content: userMessage }]])
+    ))
     setResults(Object.fromEntries(
-      MODELS.map(m => [m.id, { status: STATUS.LOADING, text: '', time: null }])
+      MODELS.map(m => [m.id, { ...initResult(), status: STATUS.LOADING }])
     ))
 
     const startTimes = Object.fromEntries(MODELS.map(m => [m.id, Date.now()]))
 
-    // 모든 모델에 동시 요청
     const promises = MODELS.map(async (model) => {
-      try {
-        const history = histories[model.id]
-        // 대화 내역에 현재 사용자 메시지 포함
-        const messages = [{ role: 'user', content: userMessage }]
+      const rawRef = { current: '' }
 
-        const body = { messages }
-        if (model.model) body.model = model.model
-
-        const data = await callEdgeFunction(model.fn, body)
-        const elapsed = ((Date.now() - startTimes[model.id]) / 1000).toFixed(1)
-
-        // 대화 내역 업데이트 (사용자 메시지 + AI 응답)
-        setHistories(prev => ({
-          ...prev,
-          [model.id]: [...messages, { role: 'assistant', content: data.result }]
-        }))
-
-        setResults(prev => ({
-          ...prev,
-          [model.id]: { status: STATUS.DONE, text: data.result, time: elapsed },
-        }))
-      } catch (err) {
-        const elapsed = ((Date.now() - startTimes[model.id]) / 1000).toFixed(1)
-        setResults(prev => ({
-          ...prev,
-          [model.id]: { status: STATUS.ERROR, text: err.message, time: elapsed },
-        }))
-      }
+      await streamModelResponse({
+        fnName: model.fn,
+        body: { messages: [{ role: 'user', content: userMessage }], model: model.model },
+        onChunk: (chunk) => {
+          rawRef.current += chunk
+          const { display, thinking } = parseThinkContent(rawRef.current)
+          setResults(prev => ({
+            ...prev,
+            [model.id]: { ...prev[model.id], raw: rawRef.current, display, thinking },
+          }))
+        },
+        onDone: () => {
+          const elapsed = ((Date.now() - startTimes[model.id]) / 1000).toFixed(1)
+          const { display } = parseThinkContent(rawRef.current)
+          // Fallback if everything was inside <think> (no actual answer)
+          let finalText = display
+          if (!finalText && rawRef.current) {
+            finalText = rawRef.current
+              .replace(/<think>[\s\S]*?<\/think>/g, '')
+              .replace(/<\/?think>/g, '')
+              .trim()
+          }
+          setHistories(prev => ({
+            ...prev,
+            [model.id]: [
+              { role: 'user', content: userMessage },
+              { role: 'assistant', content: finalText || '(응답 없음)' },
+            ],
+          }))
+          setResults(prev => ({
+            ...prev,
+            [model.id]: {
+              status: STATUS.DONE,
+              text: finalText,
+              time: elapsed,
+              raw: rawRef.current,
+              display: finalText,
+              thinking: false,
+            },
+          }))
+        },
+        onError: (err) => {
+          const elapsed = ((Date.now() - startTimes[model.id]) / 1000).toFixed(1)
+          setResults(prev => ({
+            ...prev,
+            [model.id]: { ...initResult(), status: STATUS.ERROR, text: err.message, time: elapsed },
+          }))
+        },
+      })
     })
 
     await Promise.allSettled(promises)
-    setQuery('')
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      // Shift+Enter: 줄바꿈 허용 (기본 동작)
-      if (e.shiftKey) {
-        return
-      }
-      // Enter만 누르면 전송
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
     }
@@ -161,12 +240,16 @@ export default function MultiAgent() {
   const handleReset = () => {
     setQuery('')
     setHistories(Object.fromEntries(MODELS.map(m => [m.id, []])))
-    setResults(Object.fromEntries(MODELS.map(m => [m.id, { status: STATUS.IDLE, text: '', time: null }])))
+    setResults(Object.fromEntries(MODELS.map(m => [m.id, initResult()])))
   }
 
   const activeModel = MODELS.find(m => m.id === activeTab)
   const activeResult = results[activeTab]
   const activeHistory = histories[activeTab]
+
+  // Show streaming bubble when thinking or text has started arriving
+  const showStreaming = activeResult.status === STATUS.LOADING &&
+    (activeResult.thinking || activeResult.display.length > 0)
 
   return (
     <div className="multi-agent">
@@ -175,14 +258,12 @@ export default function MultiAgent() {
         <p>하나의 질문을 여러 AI 모델에 동시에 요청하고 결과를 비교합니다</p>
       </div>
 
-      {/* 탭 + 결과 (채팅 형태) */}
-      {(hasResults || isLoading || activeHistory.length > 0) && (
+      {(hasContent || isLoading) && (
         <div className="ma-results">
           {/* 탭 헤더 */}
           <div className="ma-tabs">
             {MODELS.map(model => {
               const r = results[model.id]
-              const h = histories[model.id]
               return (
                 <button
                   key={model.id}
@@ -202,7 +283,7 @@ export default function MultiAgent() {
             })}
           </div>
 
-          {/* 탭 콘텐츠 (채팅 형태) */}
+          {/* 탭 콘텐츠 */}
           <div className="ma-tab-content">
             <div className="ma-tab-meta">
               <span style={{ color: activeModel.color }}>
@@ -214,17 +295,9 @@ export default function MultiAgent() {
               )}
             </div>
 
-            {/* 채팅 내역 */}
+            {/* 채팅 영역 */}
             <div className="ma-chat-container" ref={chatContainerRef}>
-              {activeHistory.length === 0 && activeResult.status === STATUS.LOADING && (
-                <div className="ma-loading">
-                  <div className="loading-dots">
-                    <span /><span /><span />
-                  </div>
-                  <p>응답을 기다리는 중...</p>
-                </div>
-              )}
-
+              {/* 완료된 메시지 히스토리 */}
               {activeHistory.map((msg, idx) => (
                 <div
                   key={idx}
@@ -234,19 +307,53 @@ export default function MultiAgent() {
                     {msg.role === 'user' ? '👤 나' : `${activeModel.icon} ${activeModel.name}`}
                   </div>
                   <div className="ma-chat-content">
-{msg.role === 'assistant' ? (
-  <ReactMarkdown className="ma-markdown">{msg.content}</ReactMarkdown>
-) : (
-  <p>{msg.content}</p>
-)}
+                    {msg.role === 'assistant' ? (
+                      <ReactMarkdown className="ma-markdown">{msg.content}</ReactMarkdown>
+                    ) : (
+                      <p>{msg.content}</p>
+                    )}
                   </div>
                 </div>
               ))}
 
+              {/* 아직 청크 미도착 — 대기 애니메이션 */}
+              {activeResult.status === STATUS.LOADING && !showStreaming && (
+                <div className="ma-loading">
+                  <div className="loading-dots">
+                    <span /><span /><span />
+                  </div>
+                  <p>응답을 기다리는 중...</p>
+                </div>
+              )}
+
+              {/* 스트리밍 중 어시스턴트 버블 */}
+              {showStreaming && (
+                <div className="ma-chat-message assistant">
+                  <div className="ma-chat-role">{activeModel.icon} {activeModel.name}</div>
+                  <div className="ma-chat-content">
+                    {activeResult.thinking && (
+                      <div className="ma-thinking-wrap">
+                        <span className="ma-thinking-brain">🧠</span>
+                        <div className="ma-thinking-text">
+                          <span>AI가 생각 중</span>
+                          <div className="ma-thinking-dots">
+                            <span /><span /><span />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {activeResult.display && (
+                      <p className="ma-streaming-content">{activeResult.display}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 오류 */}
               {activeResult.status === STATUS.ERROR && (
                 <div className="ma-chat-message error">
                   <div className="ma-chat-role">⚠️ 오류</div>
-                  <div className="ma-chat-content">
+                  <div className="ma-chat-content ma-error-content">
                     <p>{activeResult.text}</p>
                   </div>
                 </div>
@@ -256,7 +363,7 @@ export default function MultiAgent() {
         </div>
       )}
 
-      {/* 입력 영역 (하단 고정) */}
+      {/* 입력 영역 */}
       <div className="ma-input-area">
         <textarea
           ref={textareaRef}
@@ -271,7 +378,7 @@ export default function MultiAgent() {
         <div className="ma-input-actions">
           <span className="ma-hint">Enter로 전송, Shift+Enter로 줄바꿈</span>
           <div className="ma-buttons">
-            {hasResults && (
+            {hasContent && (
               <button className="btn-reset" onClick={handleReset} disabled={isLoading}>
                 초기화
               </button>

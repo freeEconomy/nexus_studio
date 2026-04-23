@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
+import { Sparkles, User } from 'lucide-react'
 import './AiAssistant.css'
 
 const supabase = createClient(
@@ -96,16 +97,16 @@ function ChatTab({ onTasksRefresh }) {
       <div className="chat-messages">
         {messages.map((m, i) => (
           <div key={i} className={`chat-bubble ${m.role}`}>
-            {m.role === 'assistant' && <span className="chat-avatar">🤖</span>}
+            {m.role === 'assistant' && <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}
             <div className="chat-content">
               <ReactMarkdown>{m.content}</ReactMarkdown>
             </div>
-            {m.role === 'user' && <span className="chat-avatar user-avatar">👤</span>}
+            {m.role === 'user' && <span className="chat-avatar user-avatar"><User size={14} strokeWidth={1.8} /></span>}
           </div>
         ))}
         {loading && (
           <div className="chat-bubble assistant">
-            <span className="chat-avatar">🤖</span>
+            <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>
             <div className="chat-content typing">
               <span /><span /><span />
             </div>
