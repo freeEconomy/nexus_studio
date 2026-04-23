@@ -97,8 +97,13 @@ async function streamModelResponse({ fnName, body, onChunk, onDone, onError }) {
     })
 
     if (!res.ok) {
-      const err = await res.text()
-      throw new Error(err || `HTTP ${res.status}`)
+      const errText = await res.text()
+      let errMsg = errText || `HTTP ${res.status}`
+      try {
+        const j = JSON.parse(errText)
+        errMsg = (typeof j.error === 'string' ? j.error : j.error?.message) || errMsg
+      } catch { /* not JSON */ }
+      throw new Error(errMsg)
     }
 
     const reader = res.body.getReader()
@@ -119,7 +124,13 @@ async function streamModelResponse({ fnName, body, onChunk, onDone, onError }) {
         if (data === '[DONE]') { onDone(); return }
         try {
           const parsed = JSON.parse(data)
-          if (parsed.error) { onError(new Error(parsed.error)); return }
+          if (parsed.error) {
+            const msg = typeof parsed.error === 'string'
+              ? parsed.error
+              : parsed.error?.message || JSON.stringify(parsed.error)
+            onError(new Error(msg))
+            return
+          }
           const content = parsed.choices?.[0]?.delta?.content
           if (content) onChunk(content)
         } catch { /* skip malformed JSON */ }

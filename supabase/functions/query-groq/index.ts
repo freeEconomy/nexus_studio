@@ -2,6 +2,17 @@
 // 429 Rate Limit 발생 시 FALLBACK_MODELS 순으로 자동 재시도
 // stream: true 시 SSE 스트리밍 응답 파이프
 
+// @ts-nocheck
+// Deno Global Declaration for TypeScript
+declare global {
+  const Deno: {
+    serve: (handler: (req: Request) => Promise<Response>) => void
+    env: {
+      get: (key: string) => string | undefined
+    }
+  }
+}
+
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 const corsHeaders = {
@@ -39,7 +50,7 @@ function truncateMessages(messages: any[], maxChars: number): any[] {
   return result
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -74,14 +85,17 @@ Deno.serve(async (req) => {
     let lastError = ''
 
     if (streamMode) {
-      // SSE streaming: find first working model and pipe its stream
+      // SSE streaming: compound models use non-streaming (they proxy llama internally,
+      // so HTTP-200 can carry an embedded rate-limit error we can't intercept mid-pipe).
+      // Regular models pipe SSE directly.
       for (const tryModel of modelChain) {
         const isCompoundModel = tryModel.startsWith('compound') || tryModel.startsWith('groq/')
+
         const requestBody: Record<string, unknown> = {
           model: tryModel,
           messages: truncatedMessages,
           max_tokens: isCompoundModel ? 512 : 2048,
-          stream: true,
+          stream: !isCompoundModel,
         }
         if (!isCompoundModel) requestBody.temperature = 0.7
 
@@ -94,33 +108,59 @@ Deno.serve(async (req) => {
           body: JSON.stringify(requestBody),
         })
 
-        if (response.ok) {
-          return new Response(response.body, {
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-              'X-Accel-Buffering': 'no',
-              'X-Used-Model': tryModel,
-            },
-          })
-        }
-
-        const errText = await response.text()
-        const isRetryable = response.status === 429 || response.status === 413 ||
-          response.status === 404 ||
+        const errText = response.ok ? '' : await response.text()
+        const isRetryable = !response.ok && (
+          response.status === 429 || response.status === 413 || response.status === 404 ||
           errText.includes('model_decommissioned') || errText.includes('rate_limit_exceeded') ||
           errText.includes('model_not_found') || errText.includes('invalid_model')
-        if (isRetryable) {
-          console.log(`[query-groq stream] ${tryModel} failed (${response.status}), trying next...`)
-          lastError = errText
-          continue
-        }
-        // Non-retryable error — send as SSE error event
-        return new Response(
-          `data: ${JSON.stringify({ error: errText })}\n\ndata: [DONE]\n\n`,
-          { headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' } },
         )
+
+        if (!response.ok) {
+          if (isRetryable) {
+            console.log(`[query-groq stream] ${tryModel} failed (${response.status}), trying next...`)
+            lastError = errText
+            continue
+          }
+          return new Response(
+            `data: ${JSON.stringify({ error: errText })}\n\ndata: [DONE]\n\n`,
+            { headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' } },
+          )
+        }
+
+        if (isCompoundModel) {
+          // Read full JSON response, check for embedded errors, then emit as single SSE event
+          const data = await response.json()
+          const content = data.choices?.[0]?.message?.content
+          if (!content || data.error) {
+            const embeddedErr = data.error?.message || data.error || 'empty response'
+            console.log(`[query-groq stream] ${tryModel} embedded error: ${embeddedErr}, trying next...`)
+            lastError = String(embeddedErr)
+            continue
+          }
+          const sseChunk = JSON.stringify({ choices: [{ delta: { content } }] })
+          return new Response(
+            `data: ${sseChunk}\n\ndata: [DONE]\n\n`,
+            {
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'X-Used-Model': tryModel,
+              },
+            },
+          )
+        }
+
+        // Regular model: pipe SSE stream directly
+        return new Response(response.body, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'X-Used-Model': tryModel,
+          },
+        })
       }
       // All models failed
       return new Response(
@@ -168,7 +208,7 @@ Deno.serve(async (req) => {
     }
 
     throw new Error(`All models failed. Last error: ${lastError}`)
-  } catch (err) {
+  } catch (err: unknown) {
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
