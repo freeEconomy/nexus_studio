@@ -161,23 +161,58 @@ Deno.serve(async (req) => {
       { role: 'user', content: message },
     ]
 
-    // 1차 호출 (tool calling)
-    const firstRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        tools: TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 2048,
-        temperature: 0.3,
-      }),
-    })
-    const firstData = await firstRes.json()
-    const assistantMsg = firstData.choices?.[0]?.message
+    // tool calling 지원 모델 폴백 체인
+    const TOOL_MODELS = [
+      'llama-3.3-70b-versatile',
+      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'llama-3.1-8b-instant',
+    ]
 
-    if (!assistantMsg) throw new Error('No response from AI')
+    const isRetryable = (msg: string) =>
+      msg.includes('429') || msg.includes('413') || msg.includes('404') ||
+      msg.includes('rate_limit') || msg.includes('model_decommissioned') ||
+      msg.includes('model_not_found') || msg.includes('invalid_model') ||
+      msg.includes('does not exist')
+
+    const groqPost = async (body: Record<string, unknown>) => {
+      const res = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const errText = await res.text()
+        throw new Error(`Groq ${res.status}: ${errText}`)
+      }
+      return res.json()
+    }
+
+    // 1차 호출 (tool calling) — 모델 폴백 포함
+    let firstData: any = null
+    let usedModel = TOOL_MODELS[0]
+    for (const m of TOOL_MODELS) {
+      try {
+        firstData = await groqPost({
+          model: m,
+          messages,
+          tools: TOOLS,
+          tool_choice: 'auto',
+          max_tokens: 2048,
+          temperature: 0.3,
+        })
+        usedModel = m
+        break
+      } catch (e: any) {
+        if (!isRetryable(e.message)) throw e
+        console.log(`[assistant-agent] ${m} failed, trying next...`)
+      }
+    }
+    if (!firstData) throw new Error('All models failed for tool calling')
+
+    const assistantMsg = firstData.choices?.[0]?.message
+    if (!assistantMsg) {
+      throw new Error(`Groq returned no message. Raw: ${JSON.stringify(firstData).slice(0, 300)}`)
+    }
 
     // tool call 없으면 바로 반환
     if (!assistantMsg.tool_calls?.length) {
@@ -203,17 +238,12 @@ Deno.serve(async (req) => {
     }
 
     // 2차 호출 (최종 응답 생성)
-    const secondRes = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        max_tokens: 2048,
-        temperature: 0.4,
-      }),
+    const secondData = await groqPost({
+      model: usedModel,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.4,
     })
-    const secondData = await secondRes.json()
     const reply = secondData.choices?.[0]?.message?.content || ''
 
     return new Response(JSON.stringify({ reply, tasks: latestTasks }), {
