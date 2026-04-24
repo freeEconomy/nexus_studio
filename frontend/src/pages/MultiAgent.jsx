@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './MultiAgent.css'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -14,15 +15,25 @@ const MODELS = [
     icon: '🌐',
     fn: 'query-groq',
     model: 'compound-beta-mini',
+    hidden: true,
   },
   {
-    id: 'llama4scout',
-    name: 'Llama 4 Scout',
-    provider: 'Groq',
-    color: '#4285f4',
-    icon: '🔵',
+    id: 'gpt120b',
+    name: 'GPT-OSS 120B',
+    provider: 'OpenAI / Groq',
+    color: '#10b981',
+    icon: '🟢',
     fn: 'query-groq',
-    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    model: 'openai/gpt-oss-120b',
+  },
+  {
+    id: 'gpt20b',
+    name: 'GPT-OSS 20B',
+    provider: 'OpenAI / Groq',
+    color: '#34d399',
+    icon: '🟩',
+    fn: 'query-groq',
+    model: 'openai/gpt-oss-20b',
   },
   {
     id: 'llama70b',
@@ -42,7 +53,18 @@ const MODELS = [
     fn: 'query-groq',
     model: 'qwen/qwen3-32b',
   },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek R1 70B',
+    provider: 'Groq',
+    color: '#06b6d4',
+    icon: '🩵',
+    fn: 'query-groq',
+    model: 'deepseek-r1-distill-llama-70b',
+  },
 ]
+
+const VISIBLE_MODELS = MODELS.filter(m => !m.hidden)
 
 const STATUS = { IDLE: 'idle', LOADING: 'loading', DONE: 'done', ERROR: 'error' }
 
@@ -144,19 +166,70 @@ async function streamModelResponse({ fnName, body, onChunk, onDone, onError }) {
 
 export default function MultiAgent() {
   const [query, setQuery] = useState('')
-  const [activeTab, setActiveTab] = useState(MODELS[0].id)
+  const [activeTab, setActiveTab] = useState(VISIBLE_MODELS[0].id)
+  const [webSearch, setWebSearch] = useState(true)
   const [histories, setHistories] = useState(
-    Object.fromEntries(MODELS.map(m => [m.id, []]))
+    Object.fromEntries(VISIBLE_MODELS.map(m => [m.id, []]))
   )
   const [results, setResults] = useState(
-    Object.fromEntries(MODELS.map(m => [m.id, initResult()]))
+    Object.fromEntries(VISIBLE_MODELS.map(m => [m.id, initResult()]))
   )
   const textareaRef = useRef(null)
   const chatContainerRef = useRef(null)
 
+  // ── 타이핑 애니메이션 (compound 전체·일반 스트리밍 모두 부드럽게) ──
+  const [streamDisplay, setStreamDisplay] = useState('')
+  const streamPosRef  = useRef(0)
+  const streamRafRef  = useRef(null)
+
   const isLoading = Object.values(results).some(r => r.status === STATUS.LOADING)
   const hasContent = Object.values(histories).some(h => h.length > 0) ||
     Object.values(results).some(r => r.status === STATUS.ERROR)
+
+  // ── 타이핑 애니메이션: activeResult.display 변화 → 글자씩 표시 ──
+  const activeDisplayTarget = results[activeTab]?.display || ''
+
+  useEffect(() => {
+    cancelAnimationFrame(streamRafRef.current)
+
+    if (!activeDisplayTarget) {
+      streamPosRef.current = 0
+      setStreamDisplay('')
+      return
+    }
+
+    // 탭 전환·새 메시지 시작 시 위치가 앞서면 초기화
+    if (streamPosRef.current > activeDisplayTarget.length) {
+      streamPosRef.current = 0
+      setStreamDisplay('')
+    }
+
+    if (streamPosRef.current >= activeDisplayTarget.length) return
+
+    const CHARS_PER_FRAME = 12 // ~720자/초 @60fps
+
+    const tick = () => {
+      if (streamPosRef.current >= activeDisplayTarget.length) return
+      streamPosRef.current = Math.min(
+        streamPosRef.current + CHARS_PER_FRAME,
+        activeDisplayTarget.length
+      )
+      setStreamDisplay(activeDisplayTarget.slice(0, streamPosRef.current))
+      if (streamPosRef.current < activeDisplayTarget.length) {
+        streamRafRef.current = requestAnimationFrame(tick)
+      }
+    }
+
+    streamRafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(streamRafRef.current)
+  }, [activeDisplayTarget])
+
+  // 탭 전환 시 애니메이션 위치 초기화
+  useEffect(() => {
+    cancelAnimationFrame(streamRafRef.current)
+    streamPosRef.current = 0
+    setStreamDisplay('')
+  }, [activeTab])
 
   useEffect(() => {
     if (textareaRef.current) textareaRef.current.focus()
@@ -164,32 +237,59 @@ export default function MultiAgent() {
 
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+      // 새로운 메시지가 추가될 때 상단으로 스크롤 (Gemini 스타일)
+      chatContainerRef.current.scrollTop = 0
     }
   }, [results, histories, activeTab])
+
+  // 항상 입력창에 포커스 유지
+  useEffect(() => {
+    const focusTextarea = () => {
+      if (textareaRef.current && !isLoading) {
+        textareaRef.current.focus()
+      }
+    }
+    
+    focusTextarea()
+    
+    // 모든 상황에서 포커스 복원
+    const restoreFocus = () => setTimeout(focusTextarea, 0)
+    window.addEventListener('click', restoreFocus)
+    window.addEventListener('focus', restoreFocus)
+    
+    return () => {
+      window.removeEventListener('click', restoreFocus)
+      window.removeEventListener('focus', restoreFocus)
+    }
+  }, [isLoading])
 
   const handleSubmit = async () => {
     if (!query.trim() || isLoading) return
 
     const userMessage = query.trim()
     setQuery('')
+    
+    // 포커스 즉시 복원
+    setTimeout(() => {
+      if (textareaRef.current) textareaRef.current.focus()
+    }, 0)
 
     // Show user message immediately in all tabs
     setHistories(Object.fromEntries(
-      MODELS.map(m => [m.id, [{ role: 'user', content: userMessage }]])
+      VISIBLE_MODELS.map(m => [m.id, [{ role: 'user', content: userMessage }]])
     ))
     setResults(Object.fromEntries(
-      MODELS.map(m => [m.id, { ...initResult(), status: STATUS.LOADING }])
+      VISIBLE_MODELS.map(m => [m.id, { ...initResult(), status: STATUS.LOADING }])
     ))
 
-    const startTimes = Object.fromEntries(MODELS.map(m => [m.id, Date.now()]))
+    const startTimes = Object.fromEntries(VISIBLE_MODELS.map(m => [m.id, Date.now()]))
 
-    const promises = MODELS.map(async (model) => {
+    const promises = VISIBLE_MODELS.map(async (model) => {
       const rawRef = { current: '' }
 
       await streamModelResponse({
         fnName: model.fn,
-        body: { messages: [{ role: 'user', content: userMessage }], model: model.model },
+        body: { messages: [{ role: 'user', content: userMessage }], model: model.model, useWebSearch: webSearch },
         onChunk: (chunk) => {
           rawRef.current += chunk
           const { display, thinking } = parseThinkContent(rawRef.current)
@@ -250,11 +350,11 @@ export default function MultiAgent() {
 
   const handleReset = () => {
     setQuery('')
-    setHistories(Object.fromEntries(MODELS.map(m => [m.id, []])))
-    setResults(Object.fromEntries(MODELS.map(m => [m.id, initResult()])))
+    setHistories(Object.fromEntries(VISIBLE_MODELS.map(m => [m.id, []])))
+    setResults(Object.fromEntries(VISIBLE_MODELS.map(m => [m.id, initResult()])))
   }
 
-  const activeModel = MODELS.find(m => m.id === activeTab)
+  const activeModel = VISIBLE_MODELS.find(m => m.id === activeTab)
   const activeResult = results[activeTab]
   const activeHistory = histories[activeTab]
 
@@ -273,7 +373,7 @@ export default function MultiAgent() {
         <div className="ma-results">
           {/* 탭 헤더 */}
           <div className="ma-tabs">
-            {MODELS.map(model => {
+            {VISIBLE_MODELS.map(model => {
               const r = results[model.id]
               return (
                 <button
@@ -319,7 +419,7 @@ export default function MultiAgent() {
                   </div>
                   <div className="ma-chat-content">
                     {msg.role === 'assistant' ? (
-                      <ReactMarkdown className="ma-markdown">{msg.content}</ReactMarkdown>
+                      <ReactMarkdown className="ma-markdown" remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     ) : (
                       <p>{msg.content}</p>
                     )}
@@ -353,8 +453,13 @@ export default function MultiAgent() {
                         </div>
                       </div>
                     )}
-                    {activeResult.display && (
-                      <p className="ma-streaming-content">{activeResult.display}</p>
+                    {streamDisplay && (
+                      <div className="ma-streaming-markdown">
+                        <ReactMarkdown className="ma-markdown" remarkPlugins={[remarkGfm]}>
+                          {streamDisplay}
+                        </ReactMarkdown>
+                        <span className="ma-stream-cursor" />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -376,31 +481,40 @@ export default function MultiAgent() {
 
       {/* 입력 영역 */}
       <div className="ma-input-area">
-        <textarea
-          ref={textareaRef}
-          className="ma-textarea"
-          placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={3}
-          disabled={isLoading}
-        />
-        <div className="ma-input-actions">
-          <span className="ma-hint">Enter로 전송, Shift+Enter로 줄바꿈</span>
-          <div className="ma-buttons">
-            {hasContent && (
-              <button className="btn-reset" onClick={handleReset} disabled={isLoading}>
-                초기화
-              </button>
-            )}
+        <div className="ma-input-area-inner">
+          <textarea
+            ref={textareaRef}
+            className="ma-textarea"
+            placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            disabled={isLoading}
+          />
+          <div className="ma-input-actions">
             <button
-              className="btn-submit"
-              onClick={handleSubmit}
-              disabled={!query.trim() || isLoading}
+              className={`btn-web-search ${webSearch ? 'active' : ''}`}
+              onClick={() => setWebSearch(v => !v)}
+              disabled={isLoading}
+              title={webSearch ? '웹 검색 ON — 클릭하여 끄기' : '웹 검색 OFF — 클릭하여 켜기'}
             >
-              {isLoading ? '응답 중...' : '전송'}
+              🌐 {webSearch ? '실시간 검색 ON' : '실시간 검색 OFF'}
             </button>
+            <div className="ma-buttons">
+              {hasContent && (
+                <button className="btn-reset" onClick={handleReset} disabled={isLoading}>
+                  초기화
+                </button>
+              )}
+              <button
+                className="btn-submit"
+                onClick={handleSubmit}
+                disabled={!query.trim() || isLoading}
+              >
+                {isLoading ? '응답 중...' : '전송'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

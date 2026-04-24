@@ -35,7 +35,9 @@
       "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-ai-analyze -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"ticker\":\"NVDA\",\"market\":\"US\"}')",
       "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-kr-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"엔비\"}')",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, ensure_ascii=False, indent=2\\)\\)\")",
-      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-us-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"__TRACKED_VAR__\"}')"
+      "Bash(curl -s -X POST https://hzthqpzfaxzjufstifsf.supabase.co/functions/v1/stock-us-search -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -d '{\"query\": \"__TRACKED_VAR__\"}')",
+      "Bash(npm install:*)",
+      "WebSearch"
     ]
   }
 }

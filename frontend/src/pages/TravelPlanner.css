@@ -467,7 +467,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 
 .tp-nav-content {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 1rem;
   display: flex;
@@ -524,7 +524,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Content Wrapper */
 .tp-content-wrapper {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 2rem 1rem;
 }

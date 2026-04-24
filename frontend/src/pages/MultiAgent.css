@@ -1,6 +1,11 @@
 .multi-agent {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
+  padding-top: 64px;
+  padding-bottom: 220px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .ma-header {
@@ -21,11 +26,25 @@
 
 /* 입력 영역 */
 .ma-input-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  background: rgba(6, 11, 26, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 1rem;
+}
+
+.ma-input-area-inner {
+  max-width: 1100px;
+  margin: 0 auto;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   padding: 1rem;
-  margin-bottom: 1.5rem;
 }
 
 .ma-textarea {
@@ -34,7 +53,7 @@
   outline: none;
   resize: none;
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.5;
   color: #e2e8f0;
   font-family: inherit;
   padding: 0.5rem;
@@ -62,6 +81,42 @@
 .ma-hint {
   font-size: 0.8rem;
   color: #475569;
+}
+
+.btn-web-search {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255,255,255,0.05);
+  color: #64748b;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.btn-web-search:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  color: #94a3b8;
+}
+
+.btn-web-search.active {
+  background: rgba(22, 163, 74, 0.12);
+  color: #4ade80;
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+.btn-web-search.active:hover:not(:disabled) {
+  background: rgba(22, 163, 74, 0.18);
+}
+
+.btn-web-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ma-buttons {
@@ -108,10 +163,14 @@
 
 /* 결과 영역 */
 .ma-results {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   overflow: hidden;
+  max-height: calc(100vh - 64px - 220px);
 }
 
 /* 탭 */
@@ -318,6 +377,78 @@
   margin-bottom: 0.25rem;
 }
 
+/* GFM 표 */
+.ma-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+  overflow-x: auto;
+  display: block;
+}
+
+.ma-markdown thead tr {
+  background: rgba(99, 102, 241, 0.2);
+  border-bottom: 2px solid rgba(99, 102, 241, 0.4);
+}
+
+.ma-markdown th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #a5b4fc;
+  white-space: nowrap;
+}
+
+.ma-markdown td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+}
+
+.ma-markdown tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 스트리밍 커서 */
+.ma-streaming-markdown {
+  position: relative;
+}
+
+.ma-stream-cursor::after {
+  content: '▊';
+  color: #6366f1;
+  font-size: 0.85em;
+  animation: ma-blink 0.7s step-end infinite;
+  margin-left: 1px;
+}
+
+@keyframes ma-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* GFM 취소선 */
+.ma-markdown del {
+  color: #64748b;
+}
+
+/* GFM 체크리스트 */
+.ma-markdown input[type='checkbox'] {
+  margin-right: 0.4rem;
+  accent-color: #6366f1;
+}
+
+/* 인용문 */
+.ma-markdown blockquote {
+  border-left: 3px solid #6366f1;
+  padding: 0.25rem 0 0.25rem 1rem;
+  margin: 0.75rem 0;
+  color: #94a3b8;
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 0 4px 4px 0;
+}
+
 /* Chat bubbles */
 .ma-chat-message {
   margin-bottom: 1rem;
@@ -338,7 +469,7 @@
   color: #e2e8f0;
   border-radius: 12px 12px 12px 0;
   padding: 0.6rem 0.9rem;
-  max-width: 80%;
+  max-width: 100%;
   border: 1px solid rgba(255,255,255,0.08);
 }
 .ma-chat-role {
@@ -362,10 +493,12 @@
 
 /* 채팅 컨테이너 스크롤 */
 .ma-chat-container {
-  max-height: 520px;
+  flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.1) transparent;
+  max-height: calc(100vh - 64px - 360px);
+  padding-bottom: 1rem;
 }
 
 .ma-chat-container::-webkit-scrollbar { width: 4px; }

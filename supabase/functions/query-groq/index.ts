@@ -1,6 +1,7 @@
 // supabase/functions/query-groq/index.ts
 // 429 Rate Limit 발생 시 FALLBACK_MODELS 순으로 자동 재시도
 // stream: true 시 SSE 스트리밍 응답 파이프
+// useWebSearch: true 시 Tavily로 실시간 검색 결과를 system 메시지로 주입
 
 // @ts-nocheck
 // Deno Global Declaration for TypeScript
@@ -14,6 +15,7 @@ declare global {
 }
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const TAVILY_API_URL = 'https://api.tavily.com/search'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,6 +52,38 @@ function truncateMessages(messages: any[], maxChars: number): any[] {
   return result
 }
 
+async function fetchTavilyContext(query: string, tavilyKey: string): Promise<string> {
+  try {
+    const res = await fetch(TAVILY_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: tavilyKey,
+        query: query.slice(0, 400),
+        search_depth: 'basic',
+        max_results: 5,
+        include_answer: false,
+        days: 7,
+      }),
+    })
+    if (!res.ok) {
+      console.log(`[query-groq] Tavily ${res.status}`)
+      return ''
+    }
+    const data = await res.json()
+    const snippets = (data.results || [])
+      .slice(0, 5)
+      .map((r: any, i: number) =>
+        `[${i + 1}] ${r.title}\n${(r.content || '').slice(0, 600)}\n출처: ${r.url}`
+      )
+      .join('\n\n---\n\n')
+    return snippets
+  } catch (e: any) {
+    console.log(`[query-groq] Tavily error: ${e.message}`)
+    return ''
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -61,9 +95,10 @@ Deno.serve(async (req: Request) => {
       messages,
       model = 'llama-3.3-70b-versatile',
       stream: streamMode = false,
+      useWebSearch = false,
     } = await req.json()
 
-    const messageList = messages && Array.isArray(messages)
+    const messageList: any[] = messages && Array.isArray(messages)
       ? messages
       : [{ role: 'user', content: query }]
 
@@ -77,10 +112,38 @@ Deno.serve(async (req: Request) => {
     const groqKey = Deno.env.get('GROQ_API_KEY')
     if (!groqKey) throw new Error('GROQ_API_KEY not set')
 
+    // ── Tavily 웹 검색 컨텍스트 주입 ──────────────────────────
+    let augmentedMessages = [...messageList]
+    if (useWebSearch) {
+      const tavilyKey = Deno.env.get('TAVILY_API_KEY')
+      if (tavilyKey) {
+        // 마지막 사용자 메시지를 검색 쿼리로 사용
+        const lastUserContent = [...messageList].reverse().find(m => m.role === 'user')?.content || query || ''
+        const snippets = await fetchTavilyContext(lastUserContent, tavilyKey)
+        if (snippets) {
+          const today = new Date().toLocaleDateString('ko-KR', {
+            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+          })
+          const systemContent = `오늘 날짜: ${today}\n\n아래는 방금 검색한 최신 웹 검색 결과입니다. 이 정보를 최우선으로 활용하여 최신 사실에 기반한 답변을 제공하세요.\n\n${snippets}\n\n[안내] 위 검색 결과에서 관련 정보를 인용하되, 출처 번호([1], [2] 등)를 명시하세요.`
+
+          // 기존 system 메시지가 있으면 앞에 추가, 없으면 새로 삽입
+          if (augmentedMessages[0]?.role === 'system') {
+            augmentedMessages[0] = {
+              ...augmentedMessages[0],
+              content: systemContent + '\n\n' + augmentedMessages[0].content,
+            }
+          } else {
+            augmentedMessages = [{ role: 'system', content: systemContent }, ...augmentedMessages]
+          }
+          console.log(`[query-groq] Web search context injected (${snippets.length} chars)`)
+        }
+      }
+    }
+
     const isCompound = model.startsWith('compound') || model.startsWith('groq/compound')
     const baseChain = isCompound ? COMPOUND_FALLBACK : FALLBACK_MODELS
     const modelChain = [model, ...baseChain.filter(m => m !== model)]
-    const truncatedMessages = truncateMessages(messageList, 12000)
+    const truncatedMessages = truncateMessages(augmentedMessages, 14000)
 
     let lastError = ''
 
@@ -94,7 +157,7 @@ Deno.serve(async (req: Request) => {
         const requestBody: Record<string, unknown> = {
           model: tryModel,
           messages: truncatedMessages,
-          max_tokens: isCompoundModel ? 512 : 2048,
+          max_tokens: isCompoundModel ? 1024 : 2048,
           stream: !isCompoundModel,
         }
         if (!isCompoundModel) requestBody.temperature = 0.7
@@ -169,13 +232,13 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Non-streaming mode (unchanged)
+    // Non-streaming mode
     for (const tryModel of modelChain) {
       const isCompoundModel = tryModel.startsWith('compound') || tryModel.startsWith('groq/')
       const requestBody: Record<string, unknown> = {
         model: tryModel,
         messages: truncatedMessages,
-        max_tokens: isCompoundModel ? 512 : 2048,
+        max_tokens: isCompoundModel ? 1024 : 2048,
       }
       if (!isCompoundModel) requestBody.temperature = 0.7
 

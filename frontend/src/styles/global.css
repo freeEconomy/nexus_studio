@@ -25,7 +25,7 @@ body {
 
 /* 홈 페이지는 full-bleed (패딩 없음) */
 .main-content {
-  max-width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
 }
@@ -38,16 +38,4 @@ body {
 
 @media (max-width: 768px) {
   .main-content { padding: 1rem; }
-}
-
-@media (min-width: 1200px) {
-  .main-content { max-width: 1200px; padding: 2rem; }
-}
-
-@media (min-width: 1400px) {
-  .main-content { max-width: 1400px; }
-}
-
-@media (min-width: 1600px) {
-  .main-content { max-width: 1600px; padding: 2rem 3rem; }
 }
