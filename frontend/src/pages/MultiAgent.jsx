@@ -177,6 +177,18 @@ export default function MultiAgent() {
   const textareaRef = useRef(null)
   const chatContainerRef = useRef(null)
 
+  // textarea 자동 높이 조절 (위로 확장)
+  const autoResize = (el) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }
+
+  // query 초기화 시 높이 리셋
+  useEffect(() => {
+    if (!query && textareaRef.current) textareaRef.current.style.height = 'auto'
+  }, [query])
+
   // ── 타이핑 애니메이션 (compound 전체·일반 스트리밍 모두 부드럽게) ──
   const [streamDisplay, setStreamDisplay] = useState('')
   const streamPosRef  = useRef(0)
@@ -482,39 +494,33 @@ export default function MultiAgent() {
       {/* 입력 영역 */}
       <div className="ma-input-area">
         <div className="ma-input-area-inner">
-          <textarea
-            ref={textareaRef}
-            className="ma-textarea"
-            placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={isLoading}
-          />
-          <div className="ma-input-actions">
+          <div className="ma-input-row">
+            <textarea
+              ref={textareaRef}
+              className="ma-textarea"
+              placeholder="질문을 입력하세요..."
+              value={query}
+              onChange={e => { setQuery(e.target.value); autoResize(e.target) }}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={isLoading}
+            />
             <button
               className={`btn-web-search ${webSearch ? 'active' : ''}`}
               onClick={() => setWebSearch(v => !v)}
               disabled={isLoading}
               title={webSearch ? '웹 검색 ON — 클릭하여 끄기' : '웹 검색 OFF — 클릭하여 켜기'}
             >
-              🌐 {webSearch ? '실시간 검색 ON' : '실시간 검색 OFF'}
+              🌐 {webSearch ? 'ON' : 'OFF'}
             </button>
-            <div className="ma-buttons">
-              {hasContent && (
-                <button className="btn-reset" onClick={handleReset} disabled={isLoading}>
-                  초기화
-                </button>
-              )}
-              <button
-                className="btn-submit"
-                onClick={handleSubmit}
-                disabled={!query.trim() || isLoading}
-              >
-                {isLoading ? '응답 중...' : '전송'}
+          </div>
+          <div className="ma-input-footer">
+            <span className="ma-hint">Enter 전송 · Shift+Enter 줄바꿈</span>
+            {hasContent && (
+              <button className="btn-reset" onClick={handleReset} disabled={isLoading}>
+                초기화
               </button>
-            </div>
+            )}
           </div>
         </div>
       </div>

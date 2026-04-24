@@ -10,7 +10,8 @@
       "Bash(supabase db *)",
       "Bash(npx vite *)",
       "Read(//c/c/WebRoot/nexus_studio/frontend/**)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(curl -s 'https://hzthqpzfaxzjufstifsf.supabase.co/rest/v1/tasks?limit=1' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6dGhxcHpmYXh6anVmc3RpZnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTIzMzUsImV4cCI6MjA5MTIyODMzNX0.HDLqJsARI1nXR8AwOh60XkikPw3ssluAZEK9l34GecY')"
     ]
   }
 }

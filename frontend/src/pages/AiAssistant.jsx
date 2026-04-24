@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Sparkles, User } from 'lucide-react'
 import './AiAssistant.css'
 
@@ -48,49 +49,13 @@ const dDay = (due) => {
   return `D+${Math.abs(diff)}`
 }
 
-// ── 채팅 탭 ─────────────────────────────────────────────
-function ChatTab({ onTasksRefresh }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: '안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.\n\n💡 예시:\n- "MC에 SKT 캠페인 분석 업무 추가해줘 - 진행중, 요청자: 김팀장, D-2"\n- "오늘 MS 업무 현황 알려줘"\n- "MC 주간보고 만들어줘"' }
-  ])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+// ── 채팅 메시지 목록 (입력란 제외) ──────────────────────
+function ChatTab({ messages, loading }) {
   const bottomRef = useRef(null)
-  const textareaRef = useRef(null)
-
-  useEffect(() => {
-    textareaRef.current?.focus()
-  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  const send = async () => {
-    const msg = input.trim()
-    if (!msg || loading) return
-    setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: msg }])
-    setLoading(true)
-
-    const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
-
-    const { data, error } = await supabase.functions.invoke('assistant-agent', {
-      body: { message: msg, history },
-    })
-
-    if (error || !data) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '오류가 발생했습니다. 다시 시도해주세요.' }])
-    } else {
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
-      if (data.tasks !== null) onTasksRefresh()
-    }
-    setLoading(false)
-  }
-
-  const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-  }
+  }, [messages, loading])
 
   return (
     <div className="chat-tab">
@@ -99,7 +64,7 @@ function ChatTab({ onTasksRefresh }) {
           <div key={i} className={`chat-bubble ${m.role}`}>
             {m.role === 'assistant' && <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}
             <div className="chat-content">
-              <ReactMarkdown>{m.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
             </div>
             {m.role === 'user' && <span className="chat-avatar user-avatar"><User size={14} strokeWidth={1.8} /></span>}
           </div>
@@ -113,20 +78,6 @@ function ChatTab({ onTasksRefresh }) {
           </div>
         )}
         <div ref={bottomRef} />
-      </div>
-      <div className="chat-input-wrap">
-        <textarea
-          ref={textareaRef}
-          className="chat-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="업무 내용을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈)"
-          rows={2}
-        />
-        <button className="chat-send" onClick={send} disabled={loading || !input.trim()}>
-          전송
-        </button>
       </div>
     </div>
   )
@@ -195,7 +146,6 @@ function TasksTab({ tasks, loading, onRefresh }) {
 
   return (
     <div className="tasks-tab">
-      {/* 서비스 필터 */}
       <div className="svc-filter">
         {SERVICE_FILTERS.map(f => (
           <button
@@ -209,7 +159,6 @@ function TasksTab({ tasks, loading, onRefresh }) {
         <button className="refresh-btn" onClick={onRefresh} title="새로고침">↻</button>
       </div>
 
-      {/* 상태 요약 */}
       <div className="status-summary">
         {Object.entries(STATUS_META).map(([k, v]) => (
           <div key={k} className={`summary-card badge-${v.color}`}>
@@ -224,7 +173,6 @@ function TasksTab({ tasks, loading, onRefresh }) {
         <div className="tasks-loading">불러오는 중...</div>
       ) : (
         <>
-          {/* 진행 중 업무 */}
           <h3 className="tasks-section-title">진행 중 업무 ({active.length}건)</h3>
           {active.length === 0
             ? <p className="empty-tasks">진행 중인 업무가 없습니다</p>
@@ -232,8 +180,6 @@ function TasksTab({ tasks, loading, onRefresh }) {
                 {active.map(t => <TaskCard key={t.id} task={t} onUpdate={onRefresh} />)}
               </div>
           }
-
-          {/* 완료 업무 */}
           {done.length > 0 && (
             <>
               <h3 className="tasks-section-title done-title">✅ 완료 ({done.length}건)</h3>
@@ -307,6 +253,26 @@ export default function AiAssistant() {
   const [tasks, setTasks] = useState([])
   const [tasksLoading, setTasksLoading] = useState(false)
 
+  // 채팅 state (입력란 고정을 위해 상위로 이동)
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: '안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.\n\n💡 예시:\n- "MC에 SKT 캠페인 분석 업무 추가해줘 - 진행중, 요청자: 김팀장, D-2"\n- "오늘 MS 업무 현황 알려줘"\n- "MC 주간보고 만들어줘"' }
+  ])
+  const [input, setInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const textareaRef = useRef(null)
+
+  // textarea 자동 높이 조절 (위로 확장)
+  const autoResize = (el) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }
+
+  // input 초기화 시 높이 리셋
+  useEffect(() => {
+    if (!input && textareaRef.current) textareaRef.current.style.height = 'auto'
+  }, [input])
+
   const loadTasks = async () => {
     setTasksLoading(true)
     const { data } = await supabase
@@ -318,6 +284,51 @@ export default function AiAssistant() {
   }
 
   useEffect(() => { loadTasks() }, [])
+
+  useEffect(() => {
+    if (activeTab === 'chat') textareaRef.current?.focus()
+  }, [activeTab])
+
+  // 응답 완료 후 textarea 재활성화되면 즉시 포커스
+  useEffect(() => {
+    if (!chatLoading && activeTab === 'chat') {
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    }
+  }, [chatLoading])
+
+  const sendMessage = async (msg) => {
+    if (!msg.trim() || chatLoading) return
+    setInput('')
+    setTimeout(() => textareaRef.current?.focus(), 0)
+    setMessages(prev => [...prev, { role: 'user', content: msg }])
+    setChatLoading(true)
+
+    const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
+
+    const { data, error } = await supabase.functions.invoke('assistant-agent', {
+      body: { message: msg, history },
+    })
+
+    if (error || !data) {
+      setMessages(prev => [...prev, { role: 'assistant', content: '오류가 발생했습니다. 다시 시도해주세요.' }])
+    } else {
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      if (data.tasks !== null) loadTasks()
+    }
+    setChatLoading(false)
+    textareaRef.current?.focus()
+  }
+
+  const send = () => sendMessage(input.trim())
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const CHIPS = [
+    'MC 업무 현황 알려줘',
+    'MS 업무 현황 알려줘',
+    '현재 진행중인 업무가 뭐야?',
+  ]
 
   return (
     <div className="ai-assistant">
@@ -348,10 +359,42 @@ export default function AiAssistant() {
       </div>
 
       <div className="ai-content">
-        {activeTab === 'chat' && <ChatTab onTasksRefresh={loadTasks} />}
-        {activeTab === 'tasks' && <TasksTab tasks={tasks} loading={tasksLoading} onRefresh={loadTasks} />}
+        {activeTab === 'chat'   && <ChatTab messages={messages} loading={chatLoading} />}
+        {activeTab === 'tasks'  && <TasksTab tasks={tasks} loading={tasksLoading} onRefresh={loadTasks} />}
         {activeTab === 'report' && <ReportTab tasks={tasks} />}
       </div>
+
+      {/* 하단 고정 입력란 — 채팅 탭에서만 표시 */}
+      {activeTab === 'chat' && (
+        <div className="chat-input-fixed">
+          <div className="chat-input-inner">
+            {/* 추천 칩스 */}
+            <div className="chat-chips">
+              {CHIPS.map(chip => (
+                <button
+                  key={chip}
+                  className="chat-chip"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => sendMessage(chip)}
+                  disabled={chatLoading}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+            <textarea
+              ref={textareaRef}
+              className="chat-input"
+              value={input}
+              onChange={e => { setInput(e.target.value); autoResize(e.target) }}
+              onKeyDown={handleKey}
+              placeholder="업무 내용을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈)"
+              rows={1}
+              disabled={chatLoading}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

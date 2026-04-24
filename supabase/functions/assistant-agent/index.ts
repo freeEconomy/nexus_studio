@@ -17,7 +17,18 @@ const SYSTEM_PROMPT = `당신은 MAMF 회사의 AI 비서입니다. MC(AI Market
 
 우선순위: high(높음), normal(보통), low(낮음)
 
-사용자 요청에 따라 적절한 툴을 사용해 업무를 등록·조회·수정하세요.
+## 필수 규칙 (반드시 지켜야 합니다)
+
+1. **업무 등록**: 사용자가 업무 내용을 언급하면 반드시 add_task 툴로 DB에 저장하세요. "추가해줘"라는 말이 없어도 업무 정보가 나오면 즉시 저장하세요.
+
+2. **업무 조회**: 업무 목록을 알려달라는 요청에는 반드시 get_tasks 툴을 먼저 호출하세요. 툴 결과에 없는 업무는 절대 언급하지 마세요. 이전 대화에 언급됐더라도 get_tasks 결과에 없으면 "등록된 업무가 없습니다"라고 답하세요.
+
+3. **업무 수정**: 상태 변경, 메모 수정 등은 반드시 update_task 툴을 사용하세요.
+
+4. **툴 오류 처리**: 툴 결과에 success:false 또는 error가 있으면 사용자에게 오류 내용을 그대로 알려주세요.
+
+5. **응답 형식**: 업무를 나열할 때 id, uuid, created_at, updated_at, week_number 등 기술적 필드는 절대 표시하지 마세요. 제목, 상태, 우선순위, 요청자, 마감일, 내용(description), 메모 정도만 보여주세요.
+
 응답은 항상 한국어로 친절하게 해주세요.`
 
 const TOOLS = [
@@ -99,17 +110,39 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     Prefer: 'return=representation',
   }
 
+  // 공통: 전체 task 목록 조회 (쓰기 후 갱신용)
+  const fetchAllTasks = async () => {
+    const r = await fetch(`${supabaseUrl}/rest/v1/tasks?select=*&order=created_at.desc`, { headers })
+    return r.ok ? r.json() : []
+  }
+
+  // 공통: HTTP 오류 파싱
+  const parseErr = async (res: Response) => {
+    try {
+      const j = await res.json()
+      return j.message || j.hint || j.details || `HTTP ${res.status}`
+    } catch { return `HTTP ${res.status}` }
+  }
+
   if (name === 'add_task') {
     const now = new Date()
-    const weekNumber = Math.ceil((now.getDate() - now.getDay() + 1) / 7) +
-      (now.getMonth() * 4)
+    const weekNumber = Math.ceil(
+      ((now - new Date(now.getFullYear(), 0, 0) as any) / 86400000 + now.getDay()) / 7
+    )
     const body = { ...args, week_number: weekNumber }
     const res = await fetch(`${supabaseUrl}/rest/v1/tasks`, {
       method: 'POST', headers,
       body: JSON.stringify(body),
     })
+    if (!res.ok) {
+      const errMsg = await parseErr(res)
+      console.log(`[assistant-agent] add_task failed: ${errMsg}`)
+      return { success: false, error: errMsg }
+    }
     const data = await res.json()
-    return { success: true, task: Array.isArray(data) ? data[0] : data }
+    const task = Array.isArray(data) ? data[0] : data
+    const tasks = await fetchAllTasks()   // 목록 반환 → 프런트 갱신 트리거
+    return { success: true, task, tasks }
   }
 
   if (name === 'get_tasks') {
@@ -117,18 +150,27 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     if (args.service && args.service !== 'ALL') url += `&service=eq.${args.service}`
     if (args.status) url += `&status=eq.${args.status}`
     const res = await fetch(url, { headers })
+    if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const tasks = await res.json()
     return { tasks }
   }
 
   if (name === 'update_task') {
     const { task_id, ...updates } = args
+    updates.updated_at = new Date().toISOString()
     const res = await fetch(`${supabaseUrl}/rest/v1/tasks?id=eq.${task_id}`, {
       method: 'PATCH', headers,
       body: JSON.stringify(updates),
     })
+    if (!res.ok) {
+      const errMsg = await parseErr(res)
+      console.log(`[assistant-agent] update_task failed: ${errMsg}`)
+      return { success: false, error: errMsg }
+    }
     const data = await res.json()
-    return { success: true, task: Array.isArray(data) ? data[0] : data }
+    const task = Array.isArray(data) ? data[0] : data
+    const tasks = await fetchAllTasks()   // 목록 반환 → 프런트 갱신 트리거
+    return { success: true, task, tasks }
   }
 
   if (name === 'generate_weekly_report') {
@@ -136,6 +178,7 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     if (args.service && args.service !== 'ALL') url += `&service=eq.${args.service}`
     if (args.week_number) url += `&week_number=eq.${args.week_number}`
     const res = await fetch(url, { headers })
+    if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const tasks = await res.json()
     return { tasks, service: args.service || 'ALL', week_number: args.week_number }
   }
@@ -163,8 +206,9 @@ Deno.serve(async (req) => {
 
     // tool calling 지원 모델 폴백 체인
     const TOOL_MODELS = [
-      'llama-3.3-70b-versatile',
       'meta-llama/llama-4-scout-17b-16e-instruct',
+      'meta-llama/llama-4-maverick-17b-128e-instruct',
+      'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
     ]
 

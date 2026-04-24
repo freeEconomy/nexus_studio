@@ -26,8 +26,8 @@ body {
 /* 홈 페이지는 full-bleed (패딩 없음) */
 .main-content {
   max-width: 1440px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
+  margin: 50px auto;
+  padding: 1rem 1rem;
 }
 
 /* Home은 full-bleed */

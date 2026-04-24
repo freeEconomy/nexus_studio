@@ -382,7 +382,6 @@ const generateTravelData = async (destination, dayCount, startDate) => {
       return (
         <div className="tp-form-container">
           <div className="tp-form-content">
-            <h2>여행 계획하기</h2>
             {error && (
               <div className="error-message">
                 {error}
