@@ -855,10 +855,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08);
   margin-bottom: 1.5rem;
-  /* Leaflet 내부 z-index를 이 컨테이너 안에 격리 */
   position: relative;
   z-index: 0;
-  isolation: isolate;
 }
 
 .map-popup { padding: 0.75rem; min-width: 200px; }
@@ -888,6 +886,77 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.03);
   white-space: nowrap;
+}
+
+/* subcategory 배지 (카드 이미지 위 오버레이) */
+.subcategory-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+.modal-subcategory-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #e2e8f0;
+  margin-bottom: 0.4rem;
+}
+
+/* 가이드 팁 박스 */
+.tips-box {
+  background: rgba(37,99,235,0.08);
+  border-left: 3px solid #3b82f6;
+  border-radius: 0 8px 8px 0;
+  padding: 0.75rem 1rem !important;
+}
+.tips-box label { color: #60a5fa !important; }
+
+/* place-desc (카드 설명 미리보기) */
+.place-desc {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0.25rem 0 0.5rem 0;
+  line-height: 1.4;
+}
+
+/* 카카오 맵 전체 보기 버튼 (절대 위치) */
+.kakao-fit-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+}
+
+/* 전체 보기 버튼 (Leaflet custom control + Kakao 공통) */
+.map-fit-btn {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1.4;
+}
+.map-fit-btn:hover {
+  background: #334155;
+  border-color: rgba(255,255,255,0.3);
 }
 
 .travel-map-container { position: relative; }

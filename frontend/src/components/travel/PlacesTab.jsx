@@ -1,8 +1,18 @@
 import React, { useState } from 'react'
+import MiniKakaoMap from './MiniKakaoMap'
+
+const SUBCATEGORY_META = {
+  '랜드마크':    { emoji: '🏛️', color: '#3b82f6' },
+  '필수 관광지': { emoji: '⭐', color: '#8b5cf6' },
+  '숨겨진 명소': { emoji: '🔍', color: '#10b981' },
+  '현지 핫플':   { emoji: '🔥', color: '#f59e0b' },
+}
+
+const FILTERS = ['전체', '랜드마크', '필수 관광지', '숨겨진 명소', '현지 핫플']
 
 export default function PlacesTab({ places, destination }) {
   const [selectedPlace, setSelectedPlace] = useState(null)
-  const [selectedCategories, setSelectedCategories] = useState([])
+  const [activeFilter, setActiveFilter] = useState('전체')
 
   if (!places || places.length === 0) {
     return (
@@ -12,74 +22,73 @@ export default function PlacesTab({ places, destination }) {
     )
   }
 
-  const categories = [...new Set(places.map(p => p.category))]
-
-  // 필터링 함수
-  const handleCategoryFilter = (category) => {
-    setSelectedCategories(prev => 
-      prev.includes(category) 
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    )
-  }
-
-  // 필터링된 여행지 목록
-  const filteredPlaces = selectedCategories.length === 0 
-    ? places 
-    : places.filter(place => selectedCategories.includes(place.category))
+  const filteredPlaces = activeFilter === '전체'
+    ? places
+    : places.filter(p => p.subcategory === activeFilter)
 
   return (
     <div className="tp-tab-content places-tab">
       <div className="places-header">
-        <h2>📍 {destination} 주요 여행지</h2>
-        <p className="places-subtitle">클릭하면 상세정보를 볼 수 있습니다</p>
+        <h2>📍 {destination} 추천 장소</h2>
+        <p className="places-subtitle">10년 경력 가이드가 엄선한 실용적인 여행지</p>
       </div>
 
-      {/* 카테고리 필터 */}
+      {/* subcategory 필터 */}
       <div className="filter-chips">
-        {categories.map(category => (
-          <button
-            key={category}
-            className={`filter-chip ${selectedCategories.includes(category) ? 'active' : ''}`}
-            onClick={() => handleCategoryFilter(category)}
-          >
-            {category}
-          </button>
-        ))}
+        {FILTERS.map(f => {
+          const meta = SUBCATEGORY_META[f]
+          return (
+            <button
+              key={f}
+              className={`filter-chip ${activeFilter === f ? 'active' : ''}`}
+              onClick={() => setActiveFilter(f)}
+            >
+              {meta ? `${meta.emoji} ${f}` : f}
+            </button>
+          )
+        })}
       </div>
 
-      {/* 여행지 카드 그리드 */}
+      {filteredPlaces.length === 0 && (
+        <p className="empty-state">해당 카테고리의 장소가 없습니다.</p>
+      )}
+
       <div className="places-grid">
-        {filteredPlaces.map(place => (
-          <div
-            key={place.id}
-            className="place-card"
-            onClick={() => setSelectedPlace(place)}
-          >
-            <div className="place-image">
-              <img
-                src={place.image}
-                alt={place.name}
-                loading="lazy"
-                onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/landmark${place.id}/400/300` }}
-              />
-            </div>
-            <div className="place-content">
-              <h3>{place.name}</h3>
-              {place.rating != null && (
-                <div className="place-rating">
-                  <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(place.rating)))}</span>
-                  <span className="rating-value">{place.rating}</span>
+        {filteredPlaces.map(place => {
+          const meta = SUBCATEGORY_META[place.subcategory]
+          return (
+            <div key={place.id} className="place-card" onClick={() => setSelectedPlace(place)}>
+              <div className="place-image">
+                <img
+                  src={place.image}
+                  alt={place.name}
+                  loading="lazy"
+                  onError={e => { e.target.onerror = null; e.target.src = `https://picsum.photos/seed/landmark${place.id}/400/300` }}
+                />
+                {meta && (
+                  <span className="subcategory-badge" style={{ background: meta.color }}>
+                    {meta.emoji} {place.subcategory}
+                  </span>
+                )}
+              </div>
+              <div className="place-content">
+                <h3>{place.name}</h3>
+                {place.rating != null && (
+                  <div className="place-rating">
+                    <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(place.rating)))}</span>
+                    <span className="rating-value">{place.rating}</span>
+                  </div>
+                )}
+                <p className="place-category">{place.category}</p>
+                <p className="place-desc">{place.description?.slice(0, 60)}{place.description?.length > 60 ? '...' : ''}</p>
+                <div className="place-meta">
+                  <span>⏱️ {place.duration}</span>
+                  {place.price && place.price !== '정보 없음' && <span>💰 {place.price}</span>}
                 </div>
-              )}
-              <p className="place-category">{place.category}</p>
-              <p className="place-price">가격: {place.price}</p>
-              <div className="place-meta">
-                <span>⏱️ {place.duration}</span>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* 상세정보 모달 */}
@@ -87,7 +96,7 @@ export default function PlacesTab({ places, destination }) {
         <div className="modal-overlay" onClick={() => setSelectedPlace(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setSelectedPlace(null)}>✕</button>
-            
+
             <div className="modal-header">
               <div className="modal-image">
                 <img
@@ -98,6 +107,11 @@ export default function PlacesTab({ places, destination }) {
               </div>
               <div className="modal-title">
                 <h2>{selectedPlace.name}</h2>
+                {selectedPlace.subcategory && (
+                  <span className="modal-subcategory-badge">
+                    {SUBCATEGORY_META[selectedPlace.subcategory]?.emoji} {selectedPlace.subcategory}
+                  </span>
+                )}
                 {selectedPlace.rating != null && (
                   <div className="modal-rating">
                     <span className="stars">{'⭐'.repeat(Math.min(5, Math.floor(selectedPlace.rating)))}</span>
@@ -112,7 +126,6 @@ export default function PlacesTab({ places, destination }) {
                 <label>설명</label>
                 <p>{selectedPlace.description}</p>
               </div>
-
               <div className="info-row">
                 <div className="info-item">
                   <label>📍 주소</label>
@@ -123,7 +136,6 @@ export default function PlacesTab({ places, destination }) {
                   <p>{selectedPlace.hours}</p>
                 </div>
               </div>
-
               <div className="info-row">
                 <div className="info-item">
                   <label>💰 입장료</label>
@@ -134,23 +146,16 @@ export default function PlacesTab({ places, destination }) {
                   <p>{selectedPlace.duration}</p>
                 </div>
               </div>
-
-              <div className="info-item">
-                <label>💡 팁</label>
-                <p>{selectedPlace.tips}</p>
-              </div>
-
+              {selectedPlace.tips && (
+                <div className="info-item tips-box">
+                  <label>💡 가이드 팁</label>
+                  <p>{selectedPlace.tips}</p>
+                </div>
+              )}
               {selectedPlace.coords && (
                 <div className="info-item">
                   <label>🗺️ 위치</label>
-                  <iframe
-                    title="map"
-                    width="100%"
-                    height="200"
-                    frameBorder="0"
-                    style={{ borderRadius: '8px', marginTop: '4px' }}
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedPlace.coords.lng - 0.012},${selectedPlace.coords.lat - 0.008},${selectedPlace.coords.lng + 0.012},${selectedPlace.coords.lat + 0.008}&layer=mapnik&marker=${selectedPlace.coords.lat},${selectedPlace.coords.lng}`}
-                  />
+                  <MiniKakaoMap lat={selectedPlace.coords.lat} lng={selectedPlace.coords.lng} name={selectedPlace.name} />
                 </div>
               )}
             </div>

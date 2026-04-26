@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import "./TravelPlanner.css"
 import PlacesTab from "../components/travel/PlacesTab"
 import RestaurantsTab from "../components/travel/RestaurantsTab"
+import ActivitiesTab from "../components/travel/ActivitiesTab"
 import ItineraryTab from "../components/travel/ItineraryTab"
 import MapTab from "../components/travel/MapTab"
 import WeatherTab from "../components/travel/WeatherTab"
@@ -10,11 +11,12 @@ import WeatherTab from "../components/travel/WeatherTab"
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
 
 const TABS = [
-  { id: "places", label: "여행지", icon: "📍" },
-  { id: "restaurants", label: "맛집", icon: "🍽️" },
-  { id: "itinerary", label: "일정", icon: "📅" },
-  { id: "map", label: "지도", icon: "🗺️" },
-  { id: "weather", label: "날씨", icon: "🌤️" },
+  { id: "places",      label: "추천 장소",    icon: "📍" },
+  { id: "restaurants", label: "맛집",         icon: "🍽️" },
+  { id: "activities",  label: "경험·액티비티", icon: "🎭" },
+  { id: "itinerary",   label: "일정표",        icon: "📅" },
+  { id: "map",         label: "지도",          icon: "🗺️" },
+  { id: "weather",     label: "날씨",          icon: "🌤️" },
 ]
 
 export default function TravelPlanner() {
@@ -74,12 +76,13 @@ export default function TravelPlanner() {
          const coordinates = await geocodeDestination(destination)
          generatedData = {
            destination,
-         startDate: data.startDate,
-         endDate: data.endDate,
+           startDate: data.startDate,
+           endDate: data.endDate,
            dayCount,
            coordinates,
            places: getMinimalFallback(destination, coordinates, 'places'),
            restaurants: getMinimalFallback(destination, coordinates, 'restaurants'),
+           activities: getMinimalFallback(destination, coordinates, 'activities'),
            itinerary: generateItinerary(destination, dayCount),
            weather: generateWeather(dayCount, data.startDate),
            routeCoordinates: generateRouteCoordinates(coordinates),
@@ -155,23 +158,30 @@ const normalizeItinerary = (raw, destination, dayCount) => {
 const generateTravelData = async (destination, dayCount, startDate) => {
   const coordinates = await geocodeDestination(destination)
 
-  // query-places 실패 시 Groq compound-beta-mini로 장소 데이터 생성 (프론트 폴백)
+  // query-places 실패 시 프론트 폴백 (AI 직접 호출)
   const generatePlacesWithAI = async (type) => {
-    const isRestaurant = type === 'restaurants'
-    const label = isRestaurant ? '맛집과 레스토랑' : '관광 명소'
+    const labelMap = {
+      places: '관광 명소와 랜드마크',
+      restaurants: '맛집, 카페, 길거리 음식',
+      activities: '투어, 체험, 쇼핑, 야경 스팟, 계절 이벤트',
+    }
+    const label = labelMap[type] || '관광 명소'
+    const subcatMap = {
+      places: '"랜드마크", "필수 관광지", "숨겨진 명소", "현지 핫플" 중 하나',
+      restaurants: '"현지 맛집", "카페·디저트", "길거리 음식" 중 하나',
+      activities: '"투어·체험", "쇼핑", "야경 스팟", "계절 이벤트" 중 하나',
+    }
     try {
       const { data, error } = await supabase.functions.invoke('query-groq', {
         body: {
-          model: 'llama-3.1-8b-instant',
+          model: 'llama-3.3-70b-versatile',
           messages: [{
+            role: 'system',
+            content: '당신은 10년 이상 경력의 전문 여행 가이드입니다. 실제로 존재하는 장소만 추천하세요. JSON 배열만 반환하세요.',
+          }, {
             role: 'user',
             content: `${destination}의 실제 유명한 ${label} 8곳을 JSON 배열로만 답해줘.
-규칙:
-- name: 한국어 표기를 먼저, 현지 문자는 괄호 안에. 예: "아사쿠사지 (浅草寺)", "에펠탑 (Tour Eiffel)"
-- category, description, tips: 반드시 한국어로 작성
-- address: 현지어로
-- imageKeyword: 사진 검색용 영어 키워드 2~4단어. 예: "Senso-ji Temple Tokyo", "Paris cafe"
-형식: [{"name":"한국어명 (현지문자)","category":"한국어 카테고리","rating":4.2,"address":"현지어 주소","hours":"영업시간","price":"가격대","duration":"소요시간","description":"한국어 설명","tips":"한국어 팁","imageKeyword":"English keyword"}]
+형식: [{"name":"한국어명 (현지문자)","category":"한국어","subcategory":${subcatMap[type]},"rating":4.2,"address":"현지어 주소","hours":"영업시간","price":"가격대","duration":"소요시간","description":"전문 가이드 관점의 실용적 설명","tips":"현지 전문가 팁","imageKeyword":"English keyword"}]
 다른 텍스트 없이 JSON 배열만.`
           }]
         }
@@ -183,22 +193,22 @@ const generateTravelData = async (destination, dayCount, startDate) => {
       const parsed = JSON.parse(match[0])
       if (!Array.isArray(parsed) || !parsed.length) return null
 
-      // 이미지 병렬 조회 (Unsplash → Pexels → Picsum)
+      const imageCategory = type === 'restaurants' ? 'restaurant food' : type === 'activities' ? 'activity tour' : 'landmark tourist'
       const places = await Promise.all(parsed.map(async (p, i) => {
-        const imageKeyword = p.imageKeyword || `${destination} ${isRestaurant ? 'restaurant' : 'attraction'}`
-        const categoryEn = `${destination} ${isRestaurant ? 'restaurant food' : 'landmark tourist'}`
+        const imageKeyword = p.imageKeyword || `${destination} ${imageCategory}`
         let imageUrl = getImageUrl(imageKeyword)
         try {
           const { data: imgData } = await supabase.functions.invoke('fetch-image', {
-            body: { query: imageKeyword, categoryQuery: categoryEn }
+            body: { query: imageKeyword, categoryQuery: `${destination} ${imageCategory}` }
           })
           if (imgData?.url) imageUrl = imgData.url
         } catch { /* use picsum fallback */ }
 
         return {
           id: i + 1,
-          name: p.name || `${destination} ${label} ${i + 1}`,
+          name: p.name || `${destination} ${i + 1}`,
           category: p.category || label,
+          subcategory: p.subcategory || '',
           rating: p.rating ? Math.round(Number(p.rating) * 10) / 10 : null,
           reviews: 0,
           image: imageUrl,
@@ -218,7 +228,7 @@ const generateTravelData = async (destination, dayCount, startDate) => {
     }
   }
 
-  const [weatherRes, routeRes, itineraryRes, placesRes, restaurantsRes] = await Promise.allSettled([
+  const [weatherRes, routeRes, itineraryRes, placesRes, restaurantsRes, activitiesRes] = await Promise.allSettled([
     // 1. 날씨 예보
     supabase.functions.invoke('query-weather', {
       body: { city: destination }
@@ -230,26 +240,34 @@ const generateTravelData = async (destination, dayCount, startDate) => {
         end: [coordinates.lng, coordinates.lat],
       }
     }),
-    // 3. AI 일정 생성
+    // 3. AI 일정 생성 (전문 가이드 관점)
     supabase.functions.invoke('query-groq', {
       body: {
-        model: "llama-3.1-8b-instant",
+        model: "llama-3.3-70b-versatile",
         messages: [{
           role: "system",
-          content: "너는 전문 여행 가이드야. 여행객 입장에서 정말 필요한 실용적인 정보를 센스있게 잘 설명하고 찾아봐줘. 현지인들이 실제 가는 곳 위주로 추천하고, 관광객 함정에 빠지지 않도록 솔직하게 조언해줘."
+          content: "당신은 10년 이상 경력의 전문 여행 가이드입니다. 실제 존재하는 장소만 일정에 포함하세요. 이동 시간, 혼잡도, 최적 방문 시간대를 고려한 현실적인 일정을 만드세요. 관광객 함정을 피하고 현지인처럼 여행할 수 있도록 조언하세요."
         }, {
           role: "user",
-          content: `${destination} 여행 ${dayCount}일 일정을 JSON 배열로 만들어주세요. 형식: [{day:1, date:"1일차", activities:[{time:"09:00", title:"활동명", duration:"1시간", cost:0, type:"attraction"}]}]`
+          content: `${destination} ${dayCount}일 여행 일정을 JSON으로 만들어주세요.
+실제 존재하는 장소명만 사용하고, 장소 이동 시간과 혼잡도를 고려한 현실적인 일정으로 구성하세요.
+아침/점심/저녁 식사와 주요 관광지, 액티비티를 적절히 배분하세요.
+형식: [{"day":1,"date":"1일차","activities":[{"time":"09:00","title":"실제 장소명","duration":"2시간","cost":0,"type":"attraction","tip":"한줄 팁"}]}]
+type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightview(야경)/checkin(체크인)/free(자유시간)`
         }]
       }
     }),
-    // 4. 여행지 (Google Places API)
+    // 4. 추천 장소
     supabase.functions.invoke('query-places', {
       body: { destination, type: 'places', lat: coordinates.lat, lng: coordinates.lng }
     }),
-    // 5. 맛집 (Google Places API)
+    // 5. 맛집
     supabase.functions.invoke('query-places', {
       body: { destination, type: 'restaurants', lat: coordinates.lat, lng: coordinates.lng }
+    }),
+    // 6. 경험·액티비티
+    supabase.functions.invoke('query-places', {
+      body: { destination, type: 'activities', lat: coordinates.lat, lng: coordinates.lng }
     }),
   ])
 
@@ -288,15 +306,18 @@ const generateTravelData = async (destination, dayCount, startDate) => {
     }
   }
 
-  // 여행지/맛집: Foursquare 결과 → AI fallback → 최소 fallback 순으로 시도
-  const placesData = placesRes.status === 'fulfilled' ? placesRes.value.data : null
-  const restaurantsData = restaurantsRes.status === 'fulfilled' ? restaurantsRes.value.data : null
-  const needPlacesAI = !placesData?.places?.length || placesData.fallback
-  const needRestaurantsAI = !restaurantsData?.places?.length || restaurantsData.fallback
+  // 장소/맛집/액티비티: edge function 결과 → AI fallback → 최소 fallback 순으로 시도
+  const placesData      = placesRes.status      === 'fulfilled' ? placesRes.value.data      : null
+  const restaurantsData = restaurantsRes.status  === 'fulfilled' ? restaurantsRes.value.data  : null
+  const activitiesData  = activitiesRes.status   === 'fulfilled' ? activitiesRes.value.data   : null
+  const needPlacesAI      = !placesData?.places?.length      || placesData.fallback
+  const needRestaurantsAI = !restaurantsData?.places?.length  || restaurantsData.fallback
+  const needActivitiesAI  = !activitiesData?.places?.length   || activitiesData?.fallback
 
-  const [placesAI, restaurantsAI] = await Promise.all([
-    needPlacesAI ? generatePlacesWithAI('places') : Promise.resolve(null),
-    needRestaurantsAI ? generatePlacesWithAI('restaurants') : Promise.resolve(null),
+  const [placesAI, restaurantsAI, activitiesAI] = await Promise.all([
+    needPlacesAI      ? generatePlacesWithAI('places')      : Promise.resolve(null),
+    needRestaurantsAI ? generatePlacesWithAI('restaurants')  : Promise.resolve(null),
+    needActivitiesAI  ? generatePlacesWithAI('activities')   : Promise.resolve(null),
   ])
 
   const places = needPlacesAI
@@ -305,6 +326,9 @@ const generateTravelData = async (destination, dayCount, startDate) => {
   const restaurants = needRestaurantsAI
     ? (restaurantsAI || getMinimalFallback(destination, coordinates, 'restaurants'))
     : restaurantsData.places
+  const activities = needActivitiesAI
+    ? (activitiesAI || getMinimalFallback(destination, coordinates, 'activities'))
+    : activitiesData.places
 
   return {
     destination,
@@ -314,6 +338,7 @@ const generateTravelData = async (destination, dayCount, startDate) => {
     coordinates,
     places,
     restaurants,
+    activities,
     itinerary,
     weather,
     routeCoordinates,
@@ -506,11 +531,12 @@ const generateTravelData = async (destination, dayCount, startDate) => {
 
     return (
       <div className="tp-content-wrapper">
-        {activeTab === "places" && <PlacesTab places={travelData.places} destination={travelData.destination} />}
+        {activeTab === "places"      && <PlacesTab places={travelData.places} destination={travelData.destination} />}
         {activeTab === "restaurants" && <RestaurantsTab restaurants={travelData.restaurants} destination={travelData.destination} />}
-        {activeTab === "itinerary" && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} dayCount={travelData.dayCount} />}
-        {activeTab === "map" && <MapTab places={travelData.places} restaurants={travelData.restaurants} destination={travelData.destination} coordinates={travelData.coordinates} routeCoordinates={travelData.routeCoordinates} />}
-        {activeTab === "weather" && <WeatherTab weather={travelData.weather} destination={travelData.destination} startDate={travelData.startDate} />}
+        {activeTab === "activities"  && <ActivitiesTab activities={travelData.activities} destination={travelData.destination} />}
+        {activeTab === "itinerary"   && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} dayCount={travelData.dayCount} />}
+        {activeTab === "map"         && <MapTab places={travelData.places} restaurants={travelData.restaurants} activities={travelData.activities} destination={travelData.destination} coordinates={travelData.coordinates} routeCoordinates={travelData.routeCoordinates} />}
+        {activeTab === "weather"     && <WeatherTab weather={travelData.weather} destination={travelData.destination} startDate={travelData.startDate} />}
       </div>
     )
   }
@@ -566,18 +592,24 @@ const geocodeDestination = async (destination) => {
   return { lat: 37.5665, lng: 126.9780 } // 기본값: 서울
 }
 
-// Foursquare API 실패 시 최소 fallback — 이름·좌표만 제공, 실제 데이터 없음
+// API 전체 실패 시 최소 fallback — 이름·좌표만 제공
 const getMinimalFallback = (destination, coords, type) => {
   const c = coords
   if (type === 'restaurants') {
     return [
-      { id: 1, name: `${destination} 현지 맛집 1`, category: '현지음식', rating: null, reviews: 0, image: getImageUrl(`${destination} restaurant`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 현지 음식`, tips: '', coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
-      { id: 2, name: `${destination} 현지 맛집 2`, category: '현지음식', rating: null, reviews: 0, image: getImageUrl(`${destination} food`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 현지 음식`, tips: '', coords: { lat: c.lat - 0.005, lng: c.lng + 0.005 } },
+      { id: 1, name: `${destination} 현지 맛집`, category: '현지음식', subcategory: '현지 맛집', rating: null, reviews: 0, image: getImageUrl(`${destination} restaurant`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 현지 음식`, tips: '', coords: { lat: c.lat + 0.005, lng: c.lng - 0.005 } },
+      { id: 2, name: `${destination} 카페`, category: '카페', subcategory: '카페·디저트', rating: null, reviews: 0, image: getImageUrl(`${destination} cafe`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1시간', description: `${destination} 카페`, tips: '', coords: { lat: c.lat - 0.005, lng: c.lng + 0.005 } },
+    ]
+  }
+  if (type === 'activities') {
+    return [
+      { id: 1, name: `${destination} 현지 투어`, category: '투어', subcategory: '투어·체험', rating: null, reviews: 0, image: getImageUrl(`${destination} tour`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '2~3시간', description: `${destination} 현지 투어`, tips: '', coords: { lat: c.lat + 0.01, lng: c.lng } },
+      { id: 2, name: `${destination} 야경 스팟`, category: '야경', subcategory: '야경 스팟', rating: null, reviews: 0, image: getImageUrl(`${destination} night view`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 야경`, tips: '', coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
     ]
   }
   return [
-    { id: 1, name: `${destination} 주요 명소 1`, category: '관광명소', rating: null, reviews: 0, image: getImageUrl(`${destination} attraction`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 관광 명소`, tips: '', coords: { lat: c.lat + 0.01, lng: c.lng } },
-    { id: 2, name: `${destination} 주요 명소 2`, category: '관광명소', rating: null, reviews: 0, image: getImageUrl(`${destination} landmark`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 관광 명소`, tips: '', coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
+    { id: 1, name: `${destination} 주요 명소`, category: '관광명소', subcategory: '필수 관광지', rating: null, reviews: 0, image: getImageUrl(`${destination} attraction`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 관광 명소`, tips: '', coords: { lat: c.lat + 0.01, lng: c.lng } },
+    { id: 2, name: `${destination} 랜드마크`, category: '랜드마크', subcategory: '랜드마크', rating: null, reviews: 0, image: getImageUrl(`${destination} landmark`), address: destination, hours: '정보 없음', price: '정보 없음', duration: '1~2시간', description: `${destination} 랜드마크`, tips: '', coords: { lat: c.lat - 0.01, lng: c.lng + 0.01 } },
   ]
 }
 

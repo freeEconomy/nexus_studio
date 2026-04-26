@@ -1,5 +1,5 @@
 // @ts-nocheck
-// query-places: Groq 기반 장소/맛집 추천 + 모델 자동 폴백 (429 Rate Limit 대응)
+// query-places: Groq 기반 장소/맛집/액티비티 추천 + 모델 자동 폴백 (429 Rate Limit 대응)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,20 +7,17 @@ const corsHeaders = {
 }
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
-// 폐기 모델은 에러 핸들러가 자동 스킵하므로 후보를 넉넉히 유지
 const MODEL_CHAIN = [
   'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
   'meta-llama/llama-4-scout-17b-16e-instruct',
   'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.2-3b-preview',
-  'llama-3.2-11b-vision-preview',
+  'llama-3.1-8b-instant',
 ]
 
 async function callGroqWithFallback(
   groqKey: string,
   messages: any[],
-  maxTokens = 3500,
+  maxTokens = 4000,
 ): Promise<{ content: string; model: string }> {
   let lastError = ''
   for (const model of MODEL_CHAIN) {
@@ -31,7 +28,7 @@ async function callGroqWithFallback(
         model,
         messages,
         max_tokens: maxTokens,
-        temperature: 0.3,
+        temperature: 0.2,
         response_format: { type: 'json_object' },
       }),
     })
@@ -83,6 +80,34 @@ async function fetchPlaceImage(
   return `https://picsum.photos/seed/${encodeURIComponent(query)}/800/600`
 }
 
+// 타입별 설정
+const TYPE_CONFIG = {
+  places: {
+    count: 10,
+    label: 'tourist attractions and sightseeing spots',
+    categoryKo: '관광명소',
+    subcategories: ['랜드마크', '필수 관광지', '숨겨진 명소', '현지 핫플'],
+    subcategoryDesc: '반드시 "랜드마크", "필수 관광지", "숨겨진 명소", "현지 핫플" 중 하나',
+    imageCategory: 'landmark tourist',
+  },
+  restaurants: {
+    count: 10,
+    label: 'restaurants, cafes, and street food spots',
+    categoryKo: '음식점',
+    subcategories: ['현지 맛집', '카페·디저트', '길거리 음식'],
+    subcategoryDesc: '반드시 "현지 맛집", "카페·디저트", "길거리 음식" 중 하나',
+    imageCategory: 'restaurant food',
+  },
+  activities: {
+    count: 10,
+    label: 'tours, experiences, shopping areas, night view spots, and seasonal events',
+    categoryKo: '체험',
+    subcategories: ['투어·체험', '쇼핑', '야경 스팟', '계절 이벤트'],
+    subcategoryDesc: '반드시 "투어·체험", "쇼핑", "야경 스팟", "계절 이벤트" 중 하나',
+    imageCategory: 'activity tour experience',
+  },
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -106,23 +131,46 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
     const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
-    const isRestaurant = type === 'restaurants'
+    const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.places
     const centerLat = lat ?? 0
     const centerLng = lng ?? 0
 
-    const systemPrompt = `You are a travel guide API. Respond with ONLY a valid JSON object, no other text.`
+    const systemPrompt = `당신은 10년 이상 경력의 전문 여행 가이드입니다.
+실제로 존재하는 장소만 추천하세요. 존재하지 않는 가상의 장소나 이름을 절대 만들어내지 마세요.
+여행자에게 진짜 필요한 실용적인 정보 (운영시간, 가격, 이동 팁, 주의사항, 베스트 방문 시간대)를 제공하세요.
+현지인들이 실제 가는 곳 위주로, 관광객 함정을 피할 수 있도록 솔직하게 조언하세요.
+JSON 형식으로만 응답하세요.`
 
-    const userPrompt = `List exactly 10 famous ${isRestaurant ? 'restaurants and local food spots' : 'tourist attractions and landmarks'} physically located inside the city of "${destination}". Every place MUST be in ${destination}. Use real latitude/longitude near center (lat ${centerLat}, lng ${centerLng}).
+    const userPrompt = `"${destination}"에 실제로 존재하는 ${cfg.label} 10곳을 추천해주세요.
 
-STRICT LANGUAGE RULES:
-1. "name": Korean transliteration FIRST, local script in parentheses. Examples: "아사쿠사지 (浅草寺)", "만리장성 (万里长城)", "에펠탑 (Tour Eiffel)"
-2. "category": Korean only. Examples: "불교 사원", "라멘 전문점", "야시장"
-3. "description": Korean only.
-4. "tips": Korean only.
-5. "address": local language of ${destination}.
-6. "imageKeyword": 2-5 English words for photo search (no Korean). Examples: "Senso-ji Temple Tokyo", "Beijing roast duck restaurant".
+⚠️ 중요: 실제 존재하는 장소만 포함하세요. 가상의 이름은 절대 금지입니다.
+위치: 위도 ${centerLat}, 경도 ${centerLng} 근처
 
-Return JSON: {"places":[{"name":"한국어명 (현지문자)","category":"한국어","rating":4.3,"address":"현지어","hours":"영업시간","price":"가격대","duration":"방문시간","description":"한국어","tips":"한국어","imageKeyword":"English","lat":${centerLat},"lng":${centerLng}}]}`
+언어 규칙:
+1. "name": 한국어 표기 먼저, 현지 문자는 괄호 안에. 예: "아사쿠사지 (浅草寺)", "에펠탑 (Tour Eiffel)"
+2. "category": 한국어 (예: "불교 사원", "라멘 전문점", "나이트 투어")
+3. "subcategory": ${cfg.subcategoryDesc}
+4. "description": 한국어로, 전문 가이드 관점의 실용적 설명 (왜 가야 하는지, 무엇이 특별한지)
+5. "tips": 한국어로, 현지 전문가 조언 (베스트 방문 시간, 줄 서는 법, 주의사항, 숨겨진 팁)
+6. "address": 현지어
+7. "imageKeyword": 영어 2-5단어 (이미지 검색용)
+
+JSON 형식:
+{"places":[{
+  "name":"한국어명 (현지문자)",
+  "category":"한국어",
+  "subcategory":"${cfg.subcategories[0]}",
+  "rating":4.5,
+  "address":"현지어 주소",
+  "hours":"운영시간",
+  "price":"가격대",
+  "duration":"권장 체류시간",
+  "description":"전문 가이드의 실용적 설명",
+  "tips":"현지 전문가 팁",
+  "imageKeyword":"English keyword",
+  "lat":${centerLat},
+  "lng":${centerLng}
+}]}`
 
     const { content, model: usedModel } = await callGroqWithFallback(groqKey, [
       { role: 'system', content: systemPrompt },
@@ -152,7 +200,7 @@ Return JSON: {"places":[{"name":"한국어명 (현지문자)","category":"한국
       })
     }
 
-    // 이름 기준 중복 제거 (대소문자·괄호·공백 무시)
+    // 이름 기준 중복 제거
     const normalize = (s: string) => s.toLowerCase().replace(/[\s()\[\]·・]/g, '')
     const seen = new Set<string>()
     parsed = parsed.filter(p => {
@@ -162,17 +210,17 @@ Return JSON: {"places":[{"name":"한국어명 (현지문자)","category":"한국
       return true
     })
 
-    const defaultCategoryEn = isRestaurant ? 'restaurant food' : 'tourist attraction landmark'
     const places = await Promise.all(
       parsed.map(async (p: any, i: number) => {
-        const imageKeyword = p.imageKeyword || `${destination} ${isRestaurant ? 'restaurant' : 'attraction'}`
-        const categoryEn = `${destination} ${isRestaurant ? 'restaurant food' : 'landmark tourist'}`
+        const imageKeyword = p.imageKeyword || `${destination} ${cfg.imageCategory}`
+        const categoryEn = `${destination} ${cfg.imageCategory}`
         const imageUrl = await fetchPlaceImage(SUPABASE_URL, ANON_KEY, imageKeyword, categoryEn)
 
         return {
           id: i + 1,
           name: p.name || `${destination} ${i + 1}`,
-          category: p.category || (isRestaurant ? '음식점' : '관광명소'),
+          category: p.category || cfg.categoryKo,
+          subcategory: p.subcategory || cfg.subcategories[i % cfg.subcategories.length],
           rating: p.rating ? Math.round(Number(p.rating) * 10) / 10 : null,
           reviews: 0,
           image: imageUrl,

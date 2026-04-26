@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { createChart } from 'lightweight-charts'
 import './Stock.css'
@@ -647,23 +647,32 @@ function KRStocksTab() {
 //  PORTFOLIO TAB
 // ═══════════════════════════════════════════════════════
 function PortfolioTab() {
-  const [portfolio, setPortfolio] = useState([])
+  const [portfolios, setPortfolios] = useState([])
+  const [stocks, setStocks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
   const [selected, setSelected] = useState(null)
   const [chartPeriod, setChartPeriod] = useState('1M')
   const [aiData, setAiData] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
 
-  useEffect(() => {
-    loadPortfolio()
-  }, [])
+  useEffect(() => { loadAll() }, [])
 
-  const loadPortfolio = async () => {
+  const loadAll = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('portfolio').select('*')
-    if (!error && data) {
+    const [{ data: pfRows }, { data: stockRows, error }] = await Promise.all([
+      supabase.from('portfolios').select('*').order('id'),
+      supabase.from('portfolio').select('*'),
+    ])
+    setPortfolios(pfRows?.length ? pfRows : [
+      { id: 1, name: '포트폴리오 1' },
+      { id: 2, name: '포트폴리오 2' },
+      { id: 3, name: '포트폴리오 3' },
+    ])
+    if (!error && stockRows) {
       const withPx = await Promise.allSettled(
-        data.map(async s => {
+        stockRows.map(async s => {
           const fn = s.market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
           const { data: q } = await supabase.functions.invoke(fn, { body: { ticker: s.ticker } })
           const price = s.market === 'US' ? q?.c : q?.price
@@ -671,9 +680,15 @@ function PortfolioTab() {
           return { ...s, currentPrice: price, changePercent: pct }
         })
       )
-      setPortfolio(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
+      setStocks(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
     }
     setLoading(false)
+  }
+
+  const saveName = async (id) => {
+    setPortfolios(pfs => pfs.map(p => p.id === id ? { ...p, name: editName } : p))
+    await supabase.from('portfolios').update({ name: editName }).eq('id', id)
+    setEditingId(null)
   }
 
   const handleCardClick = async (stock) => {
@@ -687,128 +702,122 @@ function PortfolioTab() {
     setAiLoading(false)
   }
 
-  // Totals
-  const usTotal  = portfolio.filter(s => s.market === 'US').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
-  const krTotal  = portfolio.filter(s => s.market === 'KR').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
-  const usCost   = portfolio.filter(s => s.market === 'US').reduce((sum, s) => sum + s.quantity * s.avg_price, 0)
-  const krCost   = portfolio.filter(s => s.market === 'KR').reduce((sum, s) => sum + s.quantity * s.avg_price, 0)
-  const totalKRW     = usTotal * USD_KRW + krTotal
-  const totalCostKRW = usCost * USD_KRW + krCost
-  const totalPct = totalCostKRW > 0 ? ((totalKRW - totalCostKRW) / totalCostKRW * 100) : 0
+  const getColStats = useCallback((pfId) => {
+    const col = stocks.filter(s => s.portfolio_id === pfId)
+    const usTotal = col.filter(s => s.market === 'US').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
+    const krTotal = col.filter(s => s.market === 'KR').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
+    return { col, usTotal, krTotal, totalKRW: usTotal * USD_KRW + krTotal }
+  }, [stocks])
 
   const { startDate, endDate } = calcDateRange(chartPeriod)
 
   return (
     <div className="pf-tab">
-      {/* Summary Banner */}
-      <div className="pf-banner">
-        <div className="pf-banner-left">
-          <span className="pf-label">총 평가금액</span>
-          <span className="pf-amount">
-            ₩{totalKRW.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
-          </span>
-          <span className={`pf-pct-badge ${upDown(totalPct)}`}>
-            {fmtPct(totalPct)} {totalPct >= 0 ? '▲' : '▼'}
-          </span>
-        </div>
-        <div className="pf-banner-right">
-          <div className="pf-sub-item">
-            <span className="pf-sub-label">미국주식</span>
-            <span className="pf-sub-val">${usTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-          </div>
-          <div className="pf-sub-item">
-            <span className="pf-sub-label">국내주식</span>
-            <span className="pf-sub-val">₩{krTotal.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
-          </div>
-        </div>
-      </div>
-
       {loading ? <Spinner /> : (
-        <>
-          {/* Stock Cards */}
-          {portfolio.length === 0 ? (
-            <div className="dash-card">
-              <p className="empty-msg" style={{ textAlign: 'center', padding: '2rem' }}>
-                포트폴리오에 종목이 없습니다.<br />
-                <small>Supabase portfolio 테이블에 데이터를 추가해주세요.</small>
-              </p>
-            </div>
-          ) : (
-            <div className="pf-cards">
-              {portfolio.map(s => (
-                <div
-                  key={s.id}
-                  className={`pf-card ${upDown(s.changePercent)} ${selected?.id === s.id ? 'selected' : ''}`}
-                  onClick={() => handleCardClick(s)}
-                >
-                  <div className="pfc-header">
-                    <div className="pfc-ticker-wrap">
-                      <span className="pfc-ticker">{s.ticker}</span>
-                      {s.name && <span className="pfc-name">{s.name}</span>}
-                    </div>
-                    <span className="pfc-emoji">{s.changePercent >= 0 ? '📈' : '📉'}</span>
+        <div className="pf-multi-cols">
+          {portfolios.map(pf => {
+            const { col, usTotal, krTotal, totalKRW } = getColStats(pf.id)
+            return (
+              <div key={pf.id} className="pf-col">
+                <div className="pf-col-hdr">
+                  {editingId === pf.id ? (
+                    <input
+                      className="pf-col-name-input"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onBlur={() => saveName(pf.id)}
+                      onKeyDown={e => e.key === 'Enter' && saveName(pf.id)}
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      className="pf-col-name"
+                      onClick={() => { setEditingId(pf.id); setEditName(pf.name) }}
+                    >{pf.name} <span className="pf-col-edit-icon">✎</span></span>
+                  )}
+                  <div className="pf-col-total">
+                    ₩{totalKRW.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
                   </div>
-                  <div className="pfc-price">{fmtPrice(s.currentPrice, s.market)}</div>
-                  <div className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</div>
-                  <div className="pfc-sep" />
-                  <div className="pfc-row">
-                    <span className="pfc-label">수량</span>
-                    <span className="pfc-val">{s.quantity}주</span>
-                  </div>
-                  <div className="pfc-row">
-                    <span className="pfc-label">매입가</span>
-                    <span className="pfc-val">{fmtPrice(s.avg_price, s.market)}</span>
-                  </div>
-                  <div className="pfc-row">
-                    <span className="pfc-label">평가금액</span>
-                    <span className="pfc-val pfc-eval">
-                      {fmtPrice(s.quantity * (s.currentPrice || s.avg_price), s.market)}
-                    </span>
+                  <div className="pf-col-subs">
+                    <span>🇺🇸 ${usTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                    <span>🇰🇷 ₩{krTotal.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="pf-col-stocks">
+                  {col.length === 0 ? (
+                    <p className="empty-msg" style={{ padding: '1.5rem', textAlign: 'center' }}>종목 없음</p>
+                  ) : col.map(s => (
+                    <div
+                      key={s.id}
+                      className={`pf-col-card ${upDown(s.changePercent)} ${selected?.id === s.id ? 'selected' : ''}`}
+                      onClick={() => handleCardClick(s)}
+                    >
+                      <div className="pfc-header">
+                        <div className="pfc-ticker-wrap">
+                          <span className="pfc-ticker">{s.ticker}</span>
+                          {s.name && <span className="pfc-name">{s.name}</span>}
+                        </div>
+                        <span className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">수량</span>
+                        <span className="pfc-val">{s.quantity}주</span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">현재가</span>
+                        <span className="pfc-val">{fmtPrice(s.currentPrice, s.market)}</span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">평가금액</span>
+                        <span className="pfc-val pfc-eval">
+                          {fmtPrice(s.quantity * (s.currentPrice || s.avg_price), s.market)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-          {/* Detail panel for selected stock */}
-          {selected && (
-            <div className="pf-detail">
-              <div className="pf-detail-hdr">
-                <div>
-                  <h3>{selected.ticker} 차트</h3>
-                  <small style={{ color: '#94a3b8' }}>{selected.market === 'US' ? '미국주식' : '국내주식'}</small>
-                </div>
-                <PeriodBtns value={chartPeriod} onChange={setChartPeriod} />
-              </div>
-              <ChartWidget
-                key={`${selected.ticker}-${chartPeriod}`}
-                ticker={selected.ticker}
-                market={selected.market}
-                height={260}
-                type="candlestick"
-                startDate={startDate}
-                endDate={endDate}
-              />
-              <div className="ai-panel">
-                <h4>AI 분석 코멘트</h4>
-                {aiLoading ? <Spinner /> : aiData ? (
-                  <div className="ai-blocks">
-                    <div className="ai-block">
-                      <span className="ai-badge qwen">Qwen3 · 수치 분석</span>
-                      <p>{aiData.analysis || '—'}</p>
-                    </div>
-                    <div className="ai-block">
-                      <span className="ai-badge compound">Tavily · 뉴스 요약</span>
-                      <p>{aiData.newsSummary || '—'}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="empty-msg">종목 카드를 클릭하면 AI 분석이 표시됩니다</p>
-                )}
-              </div>
+      {selected && (
+        <div className="pf-detail">
+          <div className="pf-detail-hdr">
+            <div>
+              <h3>{selected.ticker} 차트</h3>
+              <small style={{ color: '#94a3b8' }}>{selected.market === 'US' ? '미국주식' : '국내주식'}</small>
             </div>
-          )}
-        </>
+            <PeriodBtns value={chartPeriod} onChange={setChartPeriod} />
+          </div>
+          <ChartWidget
+            key={`${selected.ticker}-${chartPeriod}`}
+            ticker={selected.ticker}
+            market={selected.market}
+            height={260}
+            type="candlestick"
+            startDate={startDate}
+            endDate={endDate}
+          />
+          <div className="ai-panel">
+            <h4>AI 분석 코멘트</h4>
+            {aiLoading ? <Spinner /> : aiData ? (
+              <div className="ai-blocks">
+                <div className="ai-block">
+                  <span className="ai-badge qwen">Qwen3 · 수치 분석</span>
+                  <p>{aiData.analysis || '—'}</p>
+                </div>
+                <div className="ai-block">
+                  <span className="ai-badge compound">Tavily · 뉴스 요약</span>
+                  <p>{aiData.newsSummary || '—'}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="empty-msg">종목 카드를 클릭하면 AI 분석이 표시됩니다</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
