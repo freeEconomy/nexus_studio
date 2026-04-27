@@ -377,6 +377,158 @@ function DashboardTab() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  RECOMMENDED STOCKS SECTION  (US & KR 공통)
+// ═══════════════════════════════════════════════════════
+function RecCard({ rec, market }) {
+  const scores = market === 'US'
+    ? [
+        { key: 'momentum',  label: '모멘텀',    val: rec.scoreBreakdown?.momentum  },
+        { key: 'sentiment', label: '뉴스감성',  val: rec.scoreBreakdown?.sentiment },
+        { key: 'technical', label: '기술지표',  val: rec.scoreBreakdown?.technical },
+        { key: 'volume',    label: '거래량',    val: rec.scoreBreakdown?.volume    },
+      ]
+    : [
+        { key: 'momentum',     label: '모멘텀',     val: rec.scoreBreakdown?.momentum     },
+        { key: 'institutional',label: '외국인/기관', val: rec.scoreBreakdown?.institutional},
+        { key: 'technical',    label: '기술지표',   val: rec.scoreBreakdown?.technical    },
+        { key: 'volume',       label: '거래량',     val: rec.scoreBreakdown?.volume       },
+      ]
+
+  const riskClass = rec.riskLevel === '낮음' ? 'low' : rec.riskLevel === '높음' ? 'high' : 'mid'
+
+  return (
+    <div className="rec-card">
+      <div className="rec-header">
+        <div className="rec-rank">#{rec.rank}</div>
+        <div className="rec-info">
+          <div className="rec-ticker-row">
+            <span className="rec-ticker">{rec.ticker}</span>
+            <span className="rec-name">{rec.name}</span>
+            <span className="rec-sector-tag">{rec.sector}</span>
+          </div>
+        </div>
+        <div className="rec-score-badge">{rec.compositeScore}점</div>
+      </div>
+
+      <div className="rec-scores">
+        {scores.map(s => (
+          <div key={s.key} className="rec-score-row">
+            <span className="rec-score-label">{s.label}</span>
+            <div className="rec-score-bar-track">
+              <div className="rec-score-bar-fill" style={{ width: `${s.val ?? 50}%` }} />
+            </div>
+            <span className="rec-score-val">{s.val ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+
+      {rec.reason && <p className="rec-reason">{rec.reason}</p>}
+
+      {rec.keyNews?.length > 0 && (
+        <div className="rec-news">
+          {rec.keyNews.slice(0, 2).map((n, i) => (
+            <div key={i} className="rec-news-item">
+              <span className="rec-news-icon">📰</span>
+              <span className="rec-news-text">{n}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rec-footer">
+        <div className="rec-prices">
+          {rec.currentPrice != null && (
+            <span className="rec-footer-price">
+              <span className="rec-price-label">현재</span>
+              <span className="rec-price-val">
+                {market === 'US'
+                  ? `$${Number(rec.currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `₩${Number(rec.currentPrice).toLocaleString('ko-KR')}`}
+              </span>
+              {rec.changePercent != null && (
+                <span className={`rec-change-pct ${upDown(rec.changePercent)}`}>
+                  {fmtPct(rec.changePercent)}{Number(rec.changePercent) >= 0 ? '▲' : '▼'}
+                </span>
+              )}
+            </span>
+          )}
+          {rec.currentPrice != null && rec.targetPrice && <span className="rec-arrow">→</span>}
+          {rec.targetPrice && (
+            <span className="rec-footer-price">
+              <span className="rec-price-label">목표</span>
+              <span className="rec-price-val rec-target-val">{rec.targetPrice}</span>
+            </span>
+          )}
+        </div>
+        {rec.riskLevel && <span className={`rec-risk risk-${riskClass}`}>{rec.riskLevel}</span>}
+      </div>
+    </div>
+  )
+}
+
+function RecommendedStocksSection({ market }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+
+  useEffect(() => { loadRecs() }, [market])
+
+  const loadRecs = async () => {
+    setLoading(true)
+    setError(null)
+    const { data: result, error: err } = await supabase.functions.invoke('stock-recommendations', {
+      body: { market },
+    })
+    if (err) setError(err.message || '추천 로딩 실패')
+    else setData(result)
+    setLoading(false)
+  }
+
+  const updatedTime = data?.updatedAt
+    ? new Date(data.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    : null
+
+  return (
+    <div className="dash-card rec-section">
+      <div className="rec-title-row">
+        <h3 className="card-title">🎯 오늘의 추천종목 TOP 10</h3>
+        <div className="rec-header-right">
+          {updatedTime && <span className="rec-updated">업데이트 {updatedTime}</span>}
+          <button className="rec-refresh-btn" onClick={loadRecs} disabled={loading}>
+            {loading ? '분석 중...' : '새로고침'}
+          </button>
+        </div>
+      </div>
+
+      {data?.marketSummary && (
+        <p className="rec-market-summary">{data.marketSummary}</p>
+      )}
+
+      {data?.hotSectors?.length > 0 && (
+        <div className="rec-sectors">
+          <span className="rec-sectors-label">핫 섹터</span>
+          {data.hotSectors.map((s, i) => (
+            <span key={i} className="rec-sector-chip">{s}</span>
+          ))}
+        </div>
+      )}
+
+      {loading && !data && <Spinner />}
+      {loading &&  data && <p className="rec-refreshing">분석 중...</p>}
+      {error   && <p className="rec-error">{error}</p>}
+
+      {data?.recommendations?.length > 0 && (
+        <div className="rec-cards-list">
+          {data.recommendations.map((rec, i) => (
+            <RecCard key={i} rec={rec} market={market} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════
 //  US STOCKS TAB
 // ═══════════════════════════════════════════════════════
 function USStocksTab() {
@@ -509,6 +661,7 @@ function USStocksTab() {
           </div>
         </>
       )}
+      <RecommendedStocksSection market="US" />
     </div>
   )
 }
@@ -639,6 +792,7 @@ function KRStocksTab() {
           </div>
         </>
       )}
+      <RecommendedStocksSection market="KR" />
     </div>
   )
 }
@@ -762,6 +916,14 @@ function PortfolioTab() {
                       <div className="pfc-row">
                         <span className="pfc-label">수량</span>
                         <span className="pfc-val">{s.quantity}주</span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">매입가</span>
+                        <span className="pfc-val">{fmtPrice(s.avg_price, s.market)}</span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">매입금액</span>
+                        <span className="pfc-val">{fmtPrice(s.quantity * s.avg_price, s.market)}</span>
                       </div>
                       <div className="pfc-row">
                         <span className="pfc-label">현재가</span>
