@@ -118,8 +118,18 @@
   border: 1px solid rgba(255,255,255,0.12);
   color: #94a3b8;
 }
-.chat-content {
+.chat-content-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   max-width: 78%;
+  gap: 0.25rem;
+}
+.chat-bubble.user .chat-content-wrap {
+  align-items: flex-end;
+}
+.chat-content {
+  width: 100%;
   padding: 0.65rem 0.9rem;
   border-radius: 12px;
   font-size: 0.88rem;
@@ -128,6 +138,20 @@
   border: 1px solid rgba(255,255,255,0.08);
   color: #e2e8f0;
 }
+.msg-copy-btn {
+  opacity: 0;
+  padding: 0.15rem 0.5rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.chat-bubble:hover .msg-copy-btn { opacity: 1; }
+.msg-copy-btn:hover { background: rgba(255,255,255,0.12); color: #e2e8f0; }
 .chat-bubble.user .chat-content {
   background: #2563eb;
   color: #fff;
@@ -447,6 +471,9 @@
   background: rgba(255,255,255,0.06);
   color: #e2e8f0;
 }
+.task-edit select option {
+  color: #2b2b2b;
+}
 .task-edit select:focus, .task-edit textarea:focus { outline: none; border-color: #2563eb; }
 .save-btn {
   padding: 0.45rem;
@@ -508,7 +535,7 @@
   line-height: 1.8;
   color: #e2e8f0;
 }
-.report-body h1, .report-body h2, .report-body h3 { color: #1e293b; margin: 1rem 0 0.5rem; }
+.report-body h1, .report-body h2, .report-body h3 { color: #5a7bb2; margin: 1rem 0 0.5rem; }
 .report-body ul, .report-body ol { padding-left: 1.5rem; }
 .report-body code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
 

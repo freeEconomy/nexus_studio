@@ -6,30 +6,7 @@ const corsHeaders = {
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
-const SYSTEM_PROMPT = `당신은 MAMF 회사의 AI 비서입니다. MC(AI Marketing Consult)와 MS(AI Marketing Studio) 두 서비스의 업무를 관리합니다.
 
-업무 상태 종류:
-- received(접수): 새로 들어온 업무
-- analyzing(분석중): 요구사항 분석 필요
-- in_progress(진행중): 현재 작업 중
-- hold(보류): 대기/블로커 있음
-- done(완료): 완료된 업무
-
-우선순위: high(높음), normal(보통), low(낮음)
-
-## 필수 규칙 (반드시 지켜야 합니다)
-
-1. **업무 등록**: 사용자가 업무 내용을 언급하면 반드시 add_task 툴로 DB에 저장하세요. "추가해줘"라는 말이 없어도 업무 정보가 나오면 즉시 저장하세요.
-
-2. **업무 조회**: 업무 목록을 알려달라는 요청에는 반드시 get_tasks 툴을 먼저 호출하세요. 툴 결과에 없는 업무는 절대 언급하지 마세요. 이전 대화에 언급됐더라도 get_tasks 결과에 없으면 "등록된 업무가 없습니다"라고 답하세요.
-
-3. **업무 수정**: 상태 변경, 메모 수정 등은 반드시 update_task 툴을 사용하세요.
-
-4. **툴 오류 처리**: 툴 결과에 success:false 또는 error가 있으면 사용자에게 오류 내용을 그대로 알려주세요.
-
-5. **응답 형식**: 업무를 나열할 때 id, uuid, created_at, updated_at, week_number 등 기술적 필드는 절대 표시하지 마세요. 제목, 상태, 우선순위, 요청자, 마감일, 내용(description), 메모 정도만 보여주세요.
-
-응답은 항상 한국어로 친절하게 해주세요.`
 
 const TOOLS = [
   {
@@ -42,12 +19,12 @@ const TOOLS = [
         properties: {
           service:     { type: 'string', enum: ['MC', 'MS', 'COMMON'], description: '서비스 구분' },
           title:       { type: 'string', description: '업무 제목' },
-          description: { type: 'string', description: '업무 상세 내용' },
-          status:      { type: 'string', enum: ['received', 'analyzing', 'in_progress', 'hold', 'done'], description: '업무 상태' },
-          priority:    { type: 'string', enum: ['high', 'normal', 'low'], description: '우선순위' },
-          requester:   { type: 'string', description: '요청자' },
-          due_date:    { type: 'string', description: '마감일 (YYYY-MM-DD)' },
-          memo:        { type: 'string', description: '메모' },
+          description: { type: ['string', 'null'], description: '업무 상세 내용' },
+          status:      { type: ['string', 'null'], description: '업무 상태: received / analyzing / in_progress / hold / done' },
+          priority:    { type: ['string', 'null'], description: '우선순위: high / normal / low' },
+          requester:   { type: ['string', 'null'], description: '요청자' },
+          due_date:    { type: ['string', 'null'], description: '마감일 (YYYY-MM-DD)' },
+          memo:        { type: ['string', 'null'], description: '메모' },
         },
         required: ['service', 'title'],
       },
@@ -62,7 +39,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           service: { type: 'string', enum: ['MC', 'MS', 'COMMON', 'ALL'], description: '서비스 필터 (ALL이면 전체)' },
-          status:  { type: 'string', description: '상태 필터 (미입력시 전체)' },
+          status:  { type: ['string', 'null'], description: '상태 필터 (미입력시 전체)' },
         },
       },
     },
@@ -71,18 +48,18 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'update_task',
-      description: '기존 업무의 상태나 정보를 수정합니다.',
+      description: '기존 업무의 상태나 정보를 수정합니다. 반드시 get_tasks를 먼저 호출하여 task_id를 확인한 후 사용하세요. 변경할 필드만 포함하고 나머지 필드는 절대 포함하지 마세요.',
       parameters: {
         type: 'object',
         properties: {
-          task_id:     { type: 'string', description: '업무 ID' },
-          status:      { type: 'string', enum: ['received', 'analyzing', 'in_progress', 'hold', 'done'] },
-          priority:    { type: 'string', enum: ['high', 'normal', 'low'] },
-          memo:        { type: 'string' },
-          due_date:    { type: 'string' },
-          description: { type: 'string' },
+          task_id:     { type: ['string', 'null'], description: 'get_tasks로 조회한 실제 업무 ID. 절대 추측하거나 빈 값 사용 금지' },
+          status:      { type: ['string', 'null'], description: '변경할 상태: received / analyzing / in_progress / hold / done. 변경 불필요시 이 필드 제외' },
+          priority:    { type: ['string', 'null'], description: '변경할 우선순위: high / normal / low. 변경 불필요시 이 필드 제외' },
+          memo:        { type: ['string', 'null'], description: '메모. 변경 불필요시 이 필드 제외' },
+          due_date:    { type: ['string', 'null'], description: '마감일 YYYY-MM-DD. 변경 불필요시 이 필드 제외' },
+          description: { type: ['string', 'null'], description: '상세 내용. 변경 불필요시 이 필드 제외' },
         },
-        required: ['task_id'],
+        required: [],
       },
     },
   },
@@ -101,6 +78,19 @@ const TOOLS = [
     },
   },
 ]
+
+const STATUS_MAP: Record<string, string> = {
+  '접수': 'received', '분석중': 'analyzing', '진행중': 'in_progress', '보류': 'hold', '완료': 'done',
+}
+const PRIORITY_MAP: Record<string, string> = {
+  '높음': 'high', '보통': 'normal', '낮음': 'low',
+}
+
+const normalizeFields = (obj: any) => {
+  if (obj.status   && STATUS_MAP[obj.status])   obj.status   = STATUS_MAP[obj.status]
+  if (obj.priority && PRIORITY_MAP[obj.priority]) obj.priority = PRIORITY_MAP[obj.priority]
+  return obj
+}
 
 async function executeTool(name: string, args: any, supabaseUrl: string, serviceKey: string) {
   const headers = {
@@ -129,7 +119,7 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     const weekNumber = Math.ceil(
       ((now - new Date(now.getFullYear(), 0, 0) as any) / 86400000 + now.getDay()) / 7
     )
-    const body = { ...args, week_number: weekNumber }
+    const body = normalizeFields({ priority: 'normal', ...args, week_number: weekNumber })
     const res = await fetch(`${supabaseUrl}/rest/v1/tasks`, {
       method: 'POST', headers,
       body: JSON.stringify(body),
@@ -149,6 +139,7 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     let url = `${supabaseUrl}/rest/v1/tasks?select=*&order=created_at.desc`
     if (args.service && args.service !== 'ALL') url += `&service=eq.${args.service}`
     if (args.status) url += `&status=eq.${args.status}`
+    else url += `&status=not.in.(done,hold)`
     const res = await fetch(url, { headers })
     if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const tasks = await res.json()
@@ -156,7 +147,15 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
   }
 
   if (name === 'update_task') {
-    const { task_id, ...updates } = args
+    const task_id = args.task_id || args.id
+    if (!task_id) return { success: false, error: 'task_id가 없습니다. get_tasks로 업무 목록을 먼저 조회하세요.' }
+    // id/task_id 및 수정 불필요 필드 제외, 빈값 제거
+    const EXCLUDE = new Set(['task_id', 'id', 'title', 'service', 'week_number', 'created_at', 'updated_at'])
+    const updates = normalizeFields(
+      Object.fromEntries(
+        Object.entries(args).filter(([k, v]) => !EXCLUDE.has(k) && v !== '' && v !== null && v !== undefined)
+      )
+    )
     updates.updated_at = new Date().toISOString()
     const res = await fetch(`${supabaseUrl}/rest/v1/tasks?id=eq.${task_id}`, {
       method: 'PATCH', headers,
@@ -174,13 +173,28 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
   }
 
   if (name === 'generate_weekly_report') {
-    let url = `${supabaseUrl}/rest/v1/tasks?select=*&order=status.asc`
+    let url = `${supabaseUrl}/rest/v1/tasks?select=*&status=not.in.(done,hold)&order=status.asc`
     if (args.service && args.service !== 'ALL') url += `&service=eq.${args.service}`
     if (args.week_number) url += `&week_number=eq.${args.week_number}`
     const res = await fetch(url, { headers })
     if (!res.ok) return { tasks: [], error: await parseErr(res) }
-    const tasks = await res.json()
-    return { tasks, service: args.service || 'ALL', week_number: args.week_number }
+    const rawTasks = await res.json()
+    const tasks = rawTasks.map(({ title, description }: any) => ({ title, description: description || '' }))
+
+    // 보고서 템플릿 조회
+    let report_template = null
+    try {
+      const tplRes = await fetch(
+        `${supabaseUrl}/rest/v1/report_templates?select=template&order=created_at.desc&limit=1`,
+        { headers }
+      )
+      if (tplRes.ok) {
+        const tplData = await tplRes.json()
+        if (tplData[0]?.template) report_template = tplData[0].template
+      }
+    } catch { /* 템플릿 없으면 자유 형식 */ }
+
+    return { tasks, service: args.service || 'ALL', week_number: args.week_number, report_template }
   }
 
   return { error: 'Unknown tool' }
@@ -190,7 +204,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { message, history = [] } = await req.json()
+    const { message, history = [], report_service, report_week } = await req.json()
 
     const groqKey     = Deno.env.get('GROQ_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -198,8 +212,34 @@ Deno.serve(async (req) => {
 
     if (!groqKey) throw new Error('GROQ_API_KEY not set')
 
+    const dbHeaders = {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+    }
+    let SYSTEM_PROMPT = ''
+    try {
+      const promptRes = await fetch(
+        `${supabaseUrl}/rest/v1/system_prompts?menu=eq.nexus_agent&is_active=eq.true`,
+        { headers: dbHeaders }
+      )
+      if (promptRes.ok) {
+        const promptData = await promptRes.json()
+        if (promptData[0]?.system_prompt) SYSTEM_PROMPT = promptData[0].system_prompt
+      }
+    } catch { /* DB 조회 실패 시 fallback 사용 */ }
+
+    // 유형 필드 파싱으로 tool_choice 강제 지정
+    const typeMatch = message.match(/유형\s*[:：]\s*(등록|수정)/)
+    const taskType = typeMatch?.[1] ?? null
+
+    const systemExtra = taskType === '수정'
+      ? '\n\n[지시] 사용자가 "유형: 수정"을 입력했습니다. 반드시 get_tasks를 먼저 호출하여 업무를 찾고 update_task로 수정하세요. add_task는 절대 호출하지 마세요.'
+      : taskType === '등록'
+      ? '\n\n[지시] 사용자가 "유형: 등록"을 입력했습니다. 반드시 add_task를 호출하세요. update_task는 절대 호출하지 마세요.'
+      : ''
+
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: SYSTEM_PROMPT + systemExtra },
       ...history.slice(-10),
       { role: 'user', content: message },
     ]
@@ -231,6 +271,54 @@ Deno.serve(async (req) => {
       return res.json()
     }
 
+    // 주간보고 직접 생성 (report_service 파라미터가 있을 때) — 툴 없이 바로 텍스트 생성
+    if (report_service) {
+      const toolResult = await executeTool(
+        'generate_weekly_report',
+        { service: report_service, week_number: report_week },
+        supabaseUrl,
+        serviceKey
+      )
+
+      const tasks = toolResult.tasks
+        .map((t: any) => `- ${t.title}${t.description ? ': ' + t.description.replace(/[\r\n]+/g, ' ').trim() : ''}`)
+        .join('\n')
+
+      const reportSystemPrompt = `주간보고 작성 전문가입니다. 업무 목록을 받아 아래 규칙대로 보고서를 작성합니다.
+
+규칙:
+1. 섹션: 기획 / 디자인/퍼블 / 개발 / 기타 (업무가 없는 섹션은 출력하지 않음)
+2. 분류 우선순위: ①기획안·기획서 포함→기획 ②디자인·시안·퍼블·목업 포함→디자인/퍼블 ③API·개발·배포·구현·서버 포함→개발 ④나머지→기타
+3. 각 업무는 반드시 하나의 섹션에만 배치 (중복 금지)
+4. 출력 형식 (반드시 준수):
+- 기획
+  - 업무제목: 내용요약
+- 개발
+  - 업무제목: 내용요약`
+
+      const reportMessages = [
+        { role: 'system', content: reportSystemPrompt },
+        { role: 'user', content: `${report_service} ${report_week}주차 주간보고\n\n${tasks}` },
+      ]
+
+      let reportData: any = null
+      let lastError = ''
+      for (const m of TOOL_MODELS) {
+        try {
+          reportData = await groqPost({ model: m, messages: reportMessages, max_tokens: 1024, temperature: 0.1 })
+          break
+        } catch (e: any) {
+          lastError = e.message
+          if (!isRetryable(e.message)) throw e
+        }
+      }
+      if (!reportData) throw new Error(`All models failed. Last error: ${lastError}`)
+      const reply = reportData.choices?.[0]?.message?.content || '보고서 생성 실패'
+      return new Response(JSON.stringify({ reply, tasks: null }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // 1차 호출 (tool calling) — 모델 폴백 포함
     let firstData: any = null
     let usedModel = TOOL_MODELS[0]
@@ -258,37 +346,40 @@ Deno.serve(async (req) => {
       throw new Error(`Groq returned no message. Raw: ${JSON.stringify(firstData).slice(0, 300)}`)
     }
 
-    // tool call 없으면 바로 반환
-    if (!assistantMsg.tool_calls?.length) {
-      return new Response(JSON.stringify({
-        reply: assistantMsg.content || '',
-        tasks: null,
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-
-    // tool call 실행
-    messages.push(assistantMsg)
+    // tool call 루프 (get_tasks → update_task 같은 연속 호출 지원, 최대 5회)
     let latestTasks = null
+    let currentMsg = assistantMsg
+    const MAX_ROUNDS = 5
 
-    for (const call of assistantMsg.tool_calls) {
-      const args = JSON.parse(call.function.arguments || '{}')
-      const result = await executeTool(call.function.name, args, supabaseUrl, serviceKey)
-      if (result.tasks) latestTasks = result.tasks
-      messages.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: JSON.stringify(result),
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      if (!currentMsg.tool_calls?.length) break
+
+      messages.push(currentMsg)
+      for (const call of currentMsg.tool_calls) {
+        const args = JSON.parse(call.function.arguments || '{}')
+        const result = await executeTool(call.function.name, args, supabaseUrl, serviceKey)
+        if (result.tasks) latestTasks = result.tasks
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify(result),
+        })
+      }
+
+      // 다음 라운드 호출
+      const nextData = await groqPost({
+        model: usedModel,
+        messages,
+        tools: TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 2048,
+        temperature: 0.4,
       })
+      currentMsg = nextData.choices?.[0]?.message
+      if (!currentMsg) break
     }
 
-    // 2차 호출 (최종 응답 생성)
-    const secondData = await groqPost({
-      model: usedModel,
-      messages,
-      max_tokens: 2048,
-      temperature: 0.4,
-    })
-    const reply = secondData.choices?.[0]?.message?.content || ''
+    const reply = currentMsg?.content || ''
 
     return new Response(JSON.stringify({ reply, tasks: latestTasks }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { Sparkles, User } from 'lucide-react'
 import './AiAssistant.css'
 
@@ -50,6 +51,20 @@ const dDay = (due) => {
 }
 
 // ── 채팅 메시지 목록 (입력란 제외) ──────────────────────
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button className="msg-copy-btn" onClick={handleCopy} title="복사">
+      {copied ? '✓' : '⎘'}
+    </button>
+  )
+}
+
 function ChatTab({ messages, loading }) {
   const bottomRef = useRef(null)
 
@@ -63,8 +78,14 @@ function ChatTab({ messages, loading }) {
         {messages.map((m, i) => (
           <div key={i} className={`chat-bubble ${m.role}`}>
             {m.role === 'assistant' && <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}
-            <div className="chat-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+            <div className="chat-content-wrap">
+              <div className="chat-content">
+                {m.role === 'user'
+                  ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
+                  : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                }
+              </div>
+              <CopyButton text={m.content} />
             </div>
             {m.role === 'user' && <span className="chat-avatar user-avatar"><User size={14} strokeWidth={1.8} /></span>}
           </div>
@@ -202,12 +223,11 @@ function ReportTab({ tasks }) {
 
   const generate = async () => {
     setGenerating(true)
-    const filtered = svc === '전체' ? tasks : tasks.filter(t => t.service === svc)
     const weekNo = getWeekNumber()
-
-    const msg = `${svc} 서비스 ${weekNo}주차 주간보고를 작성해줘. 업무 데이터:\n${JSON.stringify(filtered, null, 2)}`
+    const svcLabel = svc === '전체' ? 'ALL' : svc
+    const msg = `${svc} 서비스 ${weekNo}주차 주간보고를 작성해줘.`
     const { data } = await supabase.functions.invoke('assistant-agent', {
-      body: { message: msg, history: [] },
+      body: { message: msg, report_service: svcLabel, report_week: weekNo },
     })
     setReport(data?.reply || '보고서 생성 실패')
     setGenerating(false)
@@ -234,7 +254,7 @@ function ReportTab({ tasks }) {
             <button className="copy-btn" onClick={copy}>📋 복사</button>
           </div>
           <div className="report-body">
-            <ReactMarkdown>{report}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{report}</ReactMarkdown>
           </div>
         </div>
       ) : (
@@ -254,9 +274,34 @@ export default function AiAssistant() {
   const [tasksLoading, setTasksLoading] = useState(false)
 
   // 채팅 state (입력란 고정을 위해 상위로 이동)
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: '안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.\n\n💡 예시:\n- "MC에 SKT 캠페인 분석 업무 추가해줘 - 진행중, 요청자: 김팀장, D-2"\n- "오늘 MS 업무 현황 알려줘"\n- "MC 주간보고 만들어줘"' }
-  ])
+const [messages, setMessages] = useState([
+  { 
+    role: 'assistant', 
+    content: `안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.
+
+📋 **업무 등록 방법**
+
+아래 형식으로 입력해주세요.
+
+\`\`\`
+유형 : 등록 / 수정
+업무 : 업무 제목
+내용 : 업무 상세 내용
+상태 : 접수 / 분석중 / 진행중 / 보류 / 완료
+서비스 : MC 또는 MS
+우선순위 : 높음 / 보통 / 낮음 (선택)
+\`\`\`
+
+---
+
+💡 **다른 기능**
+- \`MC 업무 현황 알려줘\`
+- \`MS 진행중인 업무 보여줘\`
+- \`MC 주간보고 만들어줘\`
+- 업무 상태 변경, 메모 추가 등`
+  }
+])
+
   const [input, setInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const textareaRef = useRef(null)
@@ -303,10 +348,8 @@ export default function AiAssistant() {
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setChatLoading(true)
 
-    const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
-
     const { data, error } = await supabase.functions.invoke('assistant-agent', {
-      body: { message: msg, history },
+      body: { message: msg },
     })
 
     if (error || !data) {
