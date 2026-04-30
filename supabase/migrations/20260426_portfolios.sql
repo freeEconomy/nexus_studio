@@ -5,7 +5,11 @@ CREATE TABLE IF NOT EXISTS portfolios (
 );
 
 ALTER TABLE portfolios ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "portfolios_all" ON portfolios FOR ALL USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='portfolios' AND policyname='portfolios_all') THEN
+    CREATE POLICY "portfolios_all" ON portfolios FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- 기존 portfolio 테이블에 소유자 연결 컬럼 추가
 ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS portfolio_id INTEGER REFERENCES portfolios(id) ON DELETE SET NULL;
