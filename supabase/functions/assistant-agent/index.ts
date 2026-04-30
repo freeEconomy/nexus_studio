@@ -22,8 +22,6 @@ const TOOLS = [
           description: { type: ['string', 'null'], description: '업무 상세 내용' },
           status:      { type: ['string', 'null'], description: '업무 상태: received / analyzing / in_progress / hold / done' },
           priority:    { type: ['string', 'null'], description: '우선순위: high / normal / low' },
-          requester:   { type: ['string', 'null'], description: '요청자' },
-          due_date:    { type: ['string', 'null'], description: '마감일 (YYYY-MM-DD)' },
           memo:        { type: ['string', 'null'], description: '메모' },
         },
         required: ['service', 'title'],
@@ -56,7 +54,6 @@ const TOOLS = [
           status:      { type: ['string', 'null'], description: '변경할 상태: received / analyzing / in_progress / hold / done. 변경 불필요시 이 필드 제외' },
           priority:    { type: ['string', 'null'], description: '변경할 우선순위: high / normal / low. 변경 불필요시 이 필드 제외' },
           memo:        { type: ['string', 'null'], description: '메모. 변경 불필요시 이 필드 제외' },
-          due_date:    { type: ['string', 'null'], description: '마감일 YYYY-MM-DD. 변경 불필요시 이 필드 제외' },
           description: { type: ['string', 'null'], description: '상세 내용. 변경 불필요시 이 필드 제외' },
         },
         required: [],
@@ -72,7 +69,6 @@ const TOOLS = [
         type: 'object',
         properties: {
           service:     { type: 'string', enum: ['MC', 'MS', 'ALL'] },
-          week_number: { type: 'number', description: '주차 (미입력시 이번주)' },
         },
       },
     },
@@ -204,7 +200,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { message, history = [], report_service, report_week } = await req.json()
+    const { message, history = [], report_service } = await req.json()
 
     const groqKey     = Deno.env.get('GROQ_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -229,17 +225,8 @@ Deno.serve(async (req) => {
     } catch { /* DB 조회 실패 시 fallback 사용 */ }
 
     // 유형 필드 파싱으로 tool_choice 강제 지정
-    const typeMatch = message.match(/유형\s*[:：]\s*(등록|수정)/)
-    const taskType = typeMatch?.[1] ?? null
-
-    const systemExtra = taskType === '수정'
-      ? '\n\n[지시] 사용자가 "유형: 수정"을 입력했습니다. 반드시 get_tasks를 먼저 호출하여 업무를 찾고 update_task로 수정하세요. add_task는 절대 호출하지 마세요.'
-      : taskType === '등록'
-      ? '\n\n[지시] 사용자가 "유형: 등록"을 입력했습니다. 반드시 add_task를 호출하세요. update_task는 절대 호출하지 마세요.'
-      : ''
-
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + systemExtra },
+      { role: 'system', content: SYSTEM_PROMPT },
       ...history.slice(-10),
       { role: 'user', content: message },
     ]
@@ -275,7 +262,7 @@ Deno.serve(async (req) => {
     if (report_service) {
       const toolResult = await executeTool(
         'generate_weekly_report',
-        { service: report_service, week_number: report_week },
+        { service: report_service },
         supabaseUrl,
         serviceKey
       )
@@ -298,7 +285,7 @@ Deno.serve(async (req) => {
 
       const reportMessages = [
         { role: 'system', content: reportSystemPrompt },
-        { role: 'user', content: `${report_service} ${report_week}주차 주간보고\n\n${tasks}` },
+        { role: 'user', content: `${report_service} 주간보고\n\n${tasks}` },
       ]
 
       let reportData: any = null

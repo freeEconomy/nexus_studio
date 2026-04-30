@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import remarkBreaks from 'remark-breaks'
 import { Sparkles, User } from 'lucide-react'
 import './AiAssistant.css'
 
@@ -35,12 +34,6 @@ const TABS = [
 const SERVICE_FILTERS = ['전체', 'MC', 'MS']
 
 // ── 헬퍼 ────────────────────────────────────────────────
-const getWeekNumber = () => {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), 0, 1)
-  return Math.ceil(((now - start) / 86400000 + start.getDay() + 1) / 7)
-}
-
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : ''
 const dDay = (due) => {
   if (!due) return null
@@ -223,11 +216,10 @@ function ReportTab({ tasks }) {
 
   const generate = async () => {
     setGenerating(true)
-    const weekNo = getWeekNumber()
     const svcLabel = svc === '전체' ? 'ALL' : svc
-    const msg = `${svc} 서비스 ${weekNo}주차 주간보고를 작성해줘.`
+    const msg = `${svc} 서비스 주간보고를 작성해줘.`
     const { data } = await supabase.functions.invoke('assistant-agent', {
-      body: { message: msg, report_service: svcLabel, report_week: weekNo },
+      body: { message: msg, report_service: svcLabel },
     })
     setReport(data?.reply || '보고서 생성 실패')
     setGenerating(false)
@@ -254,7 +246,7 @@ function ReportTab({ tasks }) {
             <button className="copy-btn" onClick={copy}>📋 복사</button>
           </div>
           <div className="report-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{report}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
           </div>
         </div>
       ) : (
