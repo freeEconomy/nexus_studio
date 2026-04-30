@@ -23,6 +23,7 @@ const TOOLS = [
           status:      { type: ['string', 'null'], description: '업무 상태: received / analyzing / in_progress / hold / done' },
           priority:    { type: ['string', 'null'], description: '우선순위: high / normal / low' },
           memo:        { type: ['string', 'null'], description: '메모' },
+          issue:       { type: ['string', 'null'], description: '이슈 번호 (예: JIRA-123, GitHub #42)' },
         },
         required: ['service', 'title'],
       },
@@ -54,6 +55,7 @@ const TOOLS = [
           status:      { type: ['string', 'null'], description: '변경할 상태: received / analyzing / in_progress / hold / done. 변경 불필요시 이 필드 제외' },
           priority:    { type: ['string', 'null'], description: '변경할 우선순위: high / normal / low. 변경 불필요시 이 필드 제외' },
           memo:        { type: ['string', 'null'], description: '메모. 변경 불필요시 이 필드 제외' },
+          issue:       { type: ['string', 'null'], description: '이슈 번호. 변경 불필요시 이 필드 제외' },
           description: { type: ['string', 'null'], description: '상세 내용. 변경 불필요시 이 필드 제외' },
         },
         required: [],
@@ -175,7 +177,12 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     const res = await fetch(url, { headers })
     if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const rawTasks = await res.json()
-    const tasks = rawTasks.map(({ title, description }: any) => ({ title, description: description || '' }))
+    const tasks = rawTasks.map(({ title, description, issue, status }: any) => ({
+      title,
+      description: description || '',
+      issue: issue || '',
+      status: status || '',
+    }))
 
     // 보고서 템플릿 조회
     let report_template = null
@@ -212,7 +219,16 @@ Deno.serve(async (req) => {
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
     }
-    let SYSTEM_PROMPT = ''
+    const FALLBACK_SYSTEM_PROMPT = `당신은 MAMF 회사의 AI 비서입니다. MC(AI Marketing Consult)와 MS(AI Marketing Studio) 두 서비스의 업무를 관리합니다.
+
+업무 상태: received(접수) / analyzing(분석중) / in_progress(진행중) / hold(보류) / done(완료)
+우선순위: high(높음) / normal(보통) / low(낮음)
+이슈번호: JIRA 티켓번호, GitHub 이슈번호 등 관련 이슈 추적 번호
+
+사용자 요청에 따라 적절한 툴을 사용해 업무를 등록·조회·수정하세요.
+응답은 항상 한국어로 친절하게 해주세요.`
+
+    let SYSTEM_PROMPT = FALLBACK_SYSTEM_PROMPT
     try {
       const promptRes = await fetch(
         `${supabaseUrl}/rest/v1/system_prompts?menu=eq.nexus_agent&is_active=eq.true`,
@@ -268,7 +284,12 @@ Deno.serve(async (req) => {
       )
 
       const tasks = toolResult.tasks
-        .map((t: any) => `- ${t.title}${t.description ? ': ' + t.description.replace(/[\r\n]+/g, ' ').trim() : ''}`)
+        .map((t: any) => {
+          let line = `- ${t.title}`
+          if (t.description) line += ': ' + t.description.replace(/[\r\n]+/g, ' ').trim()
+          if (t.issue) line += ` [이슈: ${t.issue}]`
+          return line
+        })
         .join('\n')
 
       const reportSystemPrompt = `주간보고 작성 전문가입니다. 업무 목록을 받아 아래 규칙대로 보고서를 작성합니다.

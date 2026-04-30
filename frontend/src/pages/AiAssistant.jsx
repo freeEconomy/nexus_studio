@@ -26,7 +26,7 @@ const PRIORITY_META = {
 }
 
 const TABS = [
-  { id: 'chat',   label: '💬 채팅' },
+  { id: 'chat',   label: '💬 에이전트' },
   { id: 'tasks',  label: '📋 업무 현황' },
   { id: 'report', label: '📊 주간보고' },
 ]
@@ -102,13 +102,19 @@ function TaskCard({ task, onUpdate }) {
   const [open, setOpen] = useState(false)
   const [editStatus, setEditStatus] = useState(task.status)
   const [memo, setMemo] = useState(task.memo || '')
+  const [issue, setIssue] = useState(task.issue || '')
   const [saving, setSaving] = useState(false)
   const sm = STATUS_META[task.status] || STATUS_META.received
   const dd = dDay(task.due_date)
 
   const save = async () => {
     setSaving(true)
-    await supabase.from('tasks').update({ status: editStatus, memo, updated_at: new Date().toISOString() }).eq('id', task.id)
+    await supabase.from('tasks').update({ 
+      status: editStatus, 
+      memo, 
+      issue,
+      updated_at: new Date().toISOString() 
+    }).eq('id', task.id)
     onUpdate()
     setSaving(false)
     setOpen(false)
@@ -125,18 +131,47 @@ function TaskCard({ task, onUpdate }) {
       <div className="task-title">{task.title}</div>
       {task.requester && <div className="task-meta">요청자: {task.requester}</div>}
       {task.due_date && <div className="task-meta">마감: {fmtDate(task.due_date)}</div>}
+      {task.issue && (
+        <div className="task-meta task-issue">
+          🔗{' '}
+          {task.issue.startsWith('http') ? (
+            <a href={task.issue} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+              {task.issue}
+            </a>
+          ) : (
+            <span>{task.issue}</span>
+          )}
+        </div>
+      )}
 
       {open && (
         <div className="task-edit" onClick={e => e.stopPropagation()}>
           {task.description && <p className="task-desc">{task.description}</p>}
+
           <label>상태 변경</label>
           <select value={editStatus} onChange={e => setEditStatus(e.target.value)}>
             {Object.entries(STATUS_META).map(([k, v]) => (
               <option key={k} value={k}>{v.emoji} {v.label}</option>
             ))}
           </select>
+
+          <label>이슈 번호 / 링크</label>
+          <input
+            type="text"
+            value={issue}
+            onChange={e => setIssue(e.target.value)}
+            placeholder="https://jira.example.com/browse/PROJ-123"
+            className="task-issue-input"
+          />
+
           <label>메모</label>
-          <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} placeholder="메모 입력..." />
+          <textarea 
+            value={memo} 
+            onChange={e => setMemo(e.target.value)} 
+            rows={2} 
+            placeholder="메모 입력..." 
+          />
+
           <button className="save-btn" onClick={save} disabled={saving}>
             {saving ? '저장 중...' : '저장'}
           </button>
@@ -279,6 +314,7 @@ const [messages, setMessages] = useState([
 유형 : 등록 / 수정
 업무 : 업무 제목
 내용 : 업무 상세 내용
+이슈번호 : 지라 번호 (선택)
 상태 : 접수 / 분석중 / 진행중 / 보류 / 완료
 서비스 : MC 또는 MS
 우선순위 : 높음 / 보통 / 낮음 (선택)

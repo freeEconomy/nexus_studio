@@ -570,9 +570,29 @@ function USStocksTab() {
     const flat = Object.values(priceMap)
     setAllStocks(flat)
 
-    // News from Finnhub
+    // News from Finnhub + Translate
     const { data: newsData } = await supabase.functions.invoke('stock-us-news', { body: { ticker: 'AAPL' } })
-    setNews(newsData?.news?.slice(0, 8) || [])
+    const rawNews = newsData?.news?.slice(0, 8) || []
+    
+    // Translate headlines to Korean
+    const translatedNews = await Promise.allSettled(
+      rawNews.map(async item => {
+        try {
+          const { data: trans } = await supabase.functions.invoke('query-tavily', {
+            body: {
+              query: `Translate this English news headline to Korean: ${item.headline}`,
+              summarize: true,
+              lang: 'ko',
+            }
+          })
+          return { ...item, headlineKr: trans?.result || item.headline }
+        } catch {
+          return { ...item, headlineKr: item.headline }
+        }
+      })
+    )
+    
+    setNews(translatedNews.filter(r => r.status === 'fulfilled').map(r => r.value))
     setLoading(false)
   }
 
@@ -652,7 +672,7 @@ function USStocksTab() {
                           </span>
                         )}
                       </div>
-                      <p className="news-headline">{item.headline}</p>
+                      <p className="news-headline">{item.headlineKr || item.headline}</p>
                     </a>
                   )
                 })
