@@ -570,9 +570,29 @@ function USStocksTab() {
     const flat = Object.values(priceMap)
     setAllStocks(flat)
 
-    // News from Finnhub
+    // News from Finnhub + Translate
     const { data: newsData } = await supabase.functions.invoke('stock-us-news', { body: { ticker: 'AAPL' } })
-    setNews(newsData?.news?.slice(0, 8) || [])
+    const rawNews = newsData?.news?.slice(0, 8) || []
+    
+    // Translate headlines to Korean
+    const translatedNews = await Promise.allSettled(
+      rawNews.map(async item => {
+        try {
+          const { data: trans } = await supabase.functions.invoke('query-tavily', {
+            body: {
+              query: `Translate this English news headline to Korean: ${item.headline}`,
+              summarize: true,
+              lang: 'ko',
+            }
+          })
+          return { ...item, headlineKr: trans?.result || item.headline }
+        } catch {
+          return { ...item, headlineKr: item.headline }
+        }
+      })
+    )
+    
+    setNews(translatedNews.filter(r => r.status === 'fulfilled').map(r => r.value))
     setLoading(false)
   }
 
@@ -652,7 +672,7 @@ function USStocksTab() {
                           </span>
                         )}
                       </div>
-                      <p className="news-headline">{item.headline}</p>
+                      <p className="news-headline">{item.headlineKr || item.headline}</p>
                     </a>
                   )
                 })
@@ -825,15 +845,16 @@ function PortfolioTab() {
       { id: 3, name: '포트폴리오 3' },
     ])
     if (!error && stockRows) {
-      const withPx = await Promise.allSettled(
-        stockRows.map(async s => {
-          const fn = s.market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
-          const { data: q } = await supabase.functions.invoke(fn, { body: { ticker: s.ticker } })
-          const price = s.market === 'US' ? q?.c : q?.price
-          const pct = price ? ((price - s.avg_price) / s.avg_price * 100) : 0
-          return { ...s, currentPrice: price, changePercent: pct }
-        })
-      )
+       const withPx = await Promise.allSettled(
+         stockRows.map(async s => {
+           const fn = s.market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
+           const { data: q } = await supabase.functions.invoke(fn, { body: { ticker: s.ticker } })
+           const price = s.market === 'US' ? q?.c : q?.price
+           const pct = price ? ((price - s.avg_price) / s.avg_price * 100) : 0
+           const todayPct = s.market === 'US' ? q?.dp : q?.changePercent
+           return { ...s, currentPrice: price, changePercent: pct, todayChangePercent: todayPct }
+         })
+       )
       setStocks(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
     }
     setLoading(false)
@@ -911,7 +932,12 @@ function PortfolioTab() {
                           <span className="pfc-ticker">{s.ticker}</span>
                           {s.name && <span className="pfc-name">{s.name}</span>}
                         </div>
-                        <span className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                          <span className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
+                          <span className={`pfc-pct ${upDown(s.todayChangePercent)}`} style={{ fontSize: '11px', opacity: 0.85 }}>
+                            📅 {fmtPct(s.todayChangePercent)}
+                          </span>
+                        </div>
                       </div>
                       <div className="pfc-row">
                         <span className="pfc-label">수량</span>

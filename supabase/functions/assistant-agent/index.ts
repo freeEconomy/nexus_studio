@@ -22,9 +22,8 @@ const TOOLS = [
           description: { type: ['string', 'null'], description: '업무 상세 내용' },
           status:      { type: ['string', 'null'], description: '업무 상태: received / analyzing / in_progress / hold / done' },
           priority:    { type: ['string', 'null'], description: '우선순위: high / normal / low' },
-          requester:   { type: ['string', 'null'], description: '요청자' },
-          due_date:    { type: ['string', 'null'], description: '마감일 (YYYY-MM-DD)' },
           memo:        { type: ['string', 'null'], description: '메모' },
+          issue:       { type: ['string', 'null'], description: '이슈 번호 (예: JIRA-123, GitHub #42)' },
         },
         required: ['service', 'title'],
       },
@@ -56,7 +55,7 @@ const TOOLS = [
           status:      { type: ['string', 'null'], description: '변경할 상태: received / analyzing / in_progress / hold / done. 변경 불필요시 이 필드 제외' },
           priority:    { type: ['string', 'null'], description: '변경할 우선순위: high / normal / low. 변경 불필요시 이 필드 제외' },
           memo:        { type: ['string', 'null'], description: '메모. 변경 불필요시 이 필드 제외' },
-          due_date:    { type: ['string', 'null'], description: '마감일 YYYY-MM-DD. 변경 불필요시 이 필드 제외' },
+          issue:       { type: ['string', 'null'], description: '이슈 번호. 변경 불필요시 이 필드 제외' },
           description: { type: ['string', 'null'], description: '상세 내용. 변경 불필요시 이 필드 제외' },
         },
         required: [],
@@ -72,7 +71,6 @@ const TOOLS = [
         type: 'object',
         properties: {
           service:     { type: 'string', enum: ['MC', 'MS', 'ALL'] },
-          week_number: { type: 'number', description: '주차 (미입력시 이번주)' },
         },
       },
     },
@@ -179,7 +177,12 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     const res = await fetch(url, { headers })
     if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const rawTasks = await res.json()
-    const tasks = rawTasks.map(({ title, description }: any) => ({ title, description: description || '' }))
+    const tasks = rawTasks.map(({ title, description, issue, status }: any) => ({
+      title,
+      description: description || '',
+      issue: issue || '',
+      status: status || '',
+    }))
 
     // 보고서 템플릿 조회
     let report_template = null
@@ -204,7 +207,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { message, history = [], report_service, report_week } = await req.json()
+    const { message, history = [], report_service } = await req.json()
 
     const groqKey     = Deno.env.get('GROQ_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -216,7 +219,16 @@ Deno.serve(async (req) => {
       apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
     }
-    let SYSTEM_PROMPT = ''
+    const FALLBACK_SYSTEM_PROMPT = `당신은 MAMF 회사의 AI 비서입니다. MC(AI Marketing Consult)와 MS(AI Marketing Studio) 두 서비스의 업무를 관리합니다.
+
+업무 상태: received(접수) / analyzing(분석중) / in_progress(진행중) / hold(보류) / done(완료)
+우선순위: high(높음) / normal(보통) / low(낮음)
+이슈번호: JIRA 티켓번호, GitHub 이슈번호 등 관련 이슈 추적 번호
+
+사용자 요청에 따라 적절한 툴을 사용해 업무를 등록·조회·수정하세요.
+응답은 항상 한국어로 친절하게 해주세요.`
+
+    let SYSTEM_PROMPT = FALLBACK_SYSTEM_PROMPT
     try {
       const promptRes = await fetch(
         `${supabaseUrl}/rest/v1/system_prompts?menu=eq.nexus_agent&is_active=eq.true`,
@@ -229,17 +241,8 @@ Deno.serve(async (req) => {
     } catch { /* DB 조회 실패 시 fallback 사용 */ }
 
     // 유형 필드 파싱으로 tool_choice 강제 지정
-    const typeMatch = message.match(/유형\s*[:：]\s*(등록|수정)/)
-    const taskType = typeMatch?.[1] ?? null
-
-    const systemExtra = taskType === '수정'
-      ? '\n\n[지시] 사용자가 "유형: 수정"을 입력했습니다. 반드시 get_tasks를 먼저 호출하여 업무를 찾고 update_task로 수정하세요. add_task는 절대 호출하지 마세요.'
-      : taskType === '등록'
-      ? '\n\n[지시] 사용자가 "유형: 등록"을 입력했습니다. 반드시 add_task를 호출하세요. update_task는 절대 호출하지 마세요.'
-      : ''
-
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + systemExtra },
+      { role: 'system', content: SYSTEM_PROMPT },
       ...history.slice(-10),
       { role: 'user', content: message },
     ]
@@ -275,13 +278,18 @@ Deno.serve(async (req) => {
     if (report_service) {
       const toolResult = await executeTool(
         'generate_weekly_report',
-        { service: report_service, week_number: report_week },
+        { service: report_service },
         supabaseUrl,
         serviceKey
       )
 
       const tasks = toolResult.tasks
-        .map((t: any) => `- ${t.title}${t.description ? ': ' + t.description.replace(/[\r\n]+/g, ' ').trim() : ''}`)
+        .map((t: any) => {
+          let line = `- ${t.title}`
+          if (t.description) line += ': ' + t.description.replace(/[\r\n]+/g, ' ').trim()
+          if (t.issue) line += ` [이슈: ${t.issue}]`
+          return line
+        })
         .join('\n')
 
       const reportSystemPrompt = `주간보고 작성 전문가입니다. 업무 목록을 받아 아래 규칙대로 보고서를 작성합니다.
@@ -298,7 +306,7 @@ Deno.serve(async (req) => {
 
       const reportMessages = [
         { role: 'system', content: reportSystemPrompt },
-        { role: 'user', content: `${report_service} ${report_week}주차 주간보고\n\n${tasks}` },
+        { role: 'user', content: `${report_service} 주간보고\n\n${tasks}` },
       ]
 
       let reportData: any = null

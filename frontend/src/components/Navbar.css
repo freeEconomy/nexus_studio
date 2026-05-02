@@ -114,8 +114,13 @@
     z-index: 1000;
     animation: slideDown 0.25s ease-out;
   }
+  
+  .nav-links li {
+    padding: 0.5rem;
+  }
+
   .nav-links.open { display: flex; }
-  .nav-item { padding: 0.85rem 1.2rem; width: 100%; font-size: 0.95rem; }
+  .nav-item { padding: 0.9rem 1.2rem; width: 100%; font-size: 0.95rem; }
 }
 
 @keyframes slideDown {
