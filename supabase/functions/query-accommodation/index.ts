@@ -6,6 +6,41 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const HARDCODED_FALLBACK = (destination: string) => [
+  { id: 1, name: '프리미엄 호텔', rating: 4.8, review_count: 2340, price: 120000, currency: 'KRW', location: destination + ' 시내 중심가', image: '🏨', amenities: '무료 와이파이, 주차, 조식' },
+  { id: 2, name: '게스트 하우스', rating: 4.5, review_count: 1250, price: 55000, currency: 'KRW', location: destination + ' 역 도보 5분', image: '🏠', amenities: '공유 주방, 라운지' },
+  { id: 3, name: '리조트', rating: 4.7, review_count: 3120, price: 210000, currency: 'KRW', location: destination + ' 해변가', image: '🌴', amenities: '수영장, 스파, 레스토랑' },
+  { id: 4, name: '비즈니스 호텔', rating: 4.3, review_count: 980, price: 85000, currency: 'KRW', location: destination + ' 비즈니스 지구', image: '💼', amenities: '컨퍼런스룸, 피트니스' },
+]
+
+async function generateAIAccommodations(destination: string, groqKey: string): Promise<any[]> {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${groqKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [{
+        role: 'user',
+        content: `${destination}의 실제 유명 호텔/숙소 6곳을 JSON 배열로 답해줘. 실제로 존재하는 숙소명만 사용해.
+형식: [{"name":"숙소명","rating":4.5,"review_count":1200,"price":120000,"currency":"KRW","location":"주소나 위치","image":"🏨","amenities":"와이파이, 주차"}]
+JSON 배열만 반환. 다른 텍스트 없이.`,
+      }],
+      max_tokens: 800,
+      temperature: 0.3,
+    }),
+  })
+  const json = await res.json()
+  const raw: string = json.choices?.[0]?.message?.content || ''
+  const match = raw.match(/\[[\s\S]*\]/)
+  if (!match) return []
+  const parsed = JSON.parse(match[0])
+  if (!Array.isArray(parsed) || !parsed.length) return []
+  return parsed
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -22,21 +57,19 @@ Deno.serve(async (req) => {
     }
 
     const rapidApiKey = Deno.env.get('RAPIDAPI_KEY')
+    let accommodations: any[] = []
 
-    let accommodations: any[] = [];
-
-    // API 키가 있을 때만 RapidAPI 호출
     if (rapidApiKey) {
       const rapidApiHost = type === 'tripadvisor'
         ? 'tripadvisor16.p.rapidapi.com'
         : 'booking-com.p.rapidapi.com'
 
-      let url = ''
       const headers = {
         'X-RapidAPI-Key': rapidApiKey,
         'X-RapidAPI-Host': rapidApiHost,
       }
 
+      let url = ''
       if (type === 'tripadvisor') {
         url = `https://tripadvisor16.p.rapidapi.com/api/v1/hotels/search?location=${encodeURIComponent(destination)}&checkin=${checkin}&checkout=${checkout}&guests=${guests}&limit=10`
       } else {
@@ -45,10 +78,8 @@ Deno.serve(async (req) => {
 
       try {
         const response = await fetch(url, { headers })
-
         if (response.ok) {
           const data = await response.json()
-
           accommodations = type === 'tripadvisor'
             ? (data.data?.map((hotel: any) => ({
                 id: hotel.id,
@@ -73,21 +104,28 @@ Deno.serve(async (req) => {
                 amenities: '',
               })) || [])
         } else {
-          console.log(`RapidAPI 응답 오류 (${response.status}), 더미데이터 사용`)
+          console.log(`RapidAPI 응답 오류 (${response.status}), AI 폴백 시도`)
         }
       } catch (apiError) {
-        console.log('RapidAPI 호출 실패, 더미데이터 사용:', (apiError as Error).message)
+        console.log('RapidAPI 호출 실패, AI 폴백 시도:', (apiError as Error).message)
       }
     }
 
-    // API 실패시 더미데이터 반환
+    // RapidAPI 결과 없으면 Groq AI로 목적지 기반 숙소 생성
     if (accommodations.length === 0) {
-      accommodations = [
-        { id: 1, name: "프리미엄 호텔", rating: 4.8, review_count: 2340, price: 120000, currency: "KRW", location: destination + " 시내 중심가", image: "🏨", amenities: "무료 와이파이, 주차, 조식" },
-        { id: 2, name: "게스트 하우스", rating: 4.5, review_count: 1250, price: 55000, currency: "KRW", location: destination + " 역 도보 5분", image: "🏠", amenities: "공유 주방, 라운지" },
-        { id: 3, name: "리조트", rating: 4.7, review_count: 3120, price: 210000, currency: "KRW", location: destination + " 해변가", image: "🌴", amenities: "수영장, 스파, 레스토랑" },
-        { id: 4, name: "비즈니스 호텔", rating: 4.3, review_count: 980, price: 85000, currency: "KRW", location: destination + " 비즈니스 지구", image: "💼", amenities: "컨퍼런스룸, 피트니스" },
-      ]
+      const groqKey = Deno.env.get('GROQ_API_KEY')
+      if (groqKey) {
+        try {
+          accommodations = await generateAIAccommodations(destination, groqKey)
+        } catch (e) {
+          console.log('Groq AI 폴백 실패:', (e as Error).message)
+        }
+      }
+    }
+
+    // 최종 하드코딩 폴백
+    if (accommodations.length === 0) {
+      accommodations = HARDCODED_FALLBACK(destination)
     }
 
     return new Response(JSON.stringify({ accommodations }), {

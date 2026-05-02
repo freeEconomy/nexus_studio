@@ -7,16 +7,61 @@ import ActivitiesTab from "../components/travel/ActivitiesTab"
 import ItineraryTab from "../components/travel/ItineraryTab"
 import MapTab from "../components/travel/MapTab"
 import WeatherTab from "../components/travel/WeatherTab"
+import FlightsTab from "../components/travel/FlightsTab"
+import AccommodationTab from "../components/travel/AccommodationTab"
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
 
+const IATA_MAP = {
+  // 한국
+  '서울': 'ICN', '인천': 'ICN', '김포': 'GMP', '부산': 'PUS', '제주': 'CJU',
+  '대구': 'TAE', '청주': 'CJJ', '광주': 'KWJ',
+  // 일본
+  '도쿄': 'NRT', '오사카': 'KIX', '후쿠오카': 'FUK', '삿포로': 'CTS',
+  '나고야': 'NGO', '오키나와': 'OKA', '나리타': 'NRT', '하네다': 'HND',
+  // 중국
+  '베이징': 'PEK', '상하이': 'PVG', '광저우': 'CAN', '청두': 'CTU', '선전': 'SZX',
+  '홍콩': 'HKG', '마카오': 'MFM',
+  // 동남아
+  '방콕': 'BKK', '싱가포르': 'SIN', '발리': 'DPS', '쿠알라룸푸르': 'KUL',
+  '하노이': 'HAN', '호치민': 'SGN', '다낭': 'DAD', '자카르타': 'CGK',
+  '마닐라': 'MNL', '세부': 'CEB', '양곤': 'RGN', '푸켓': 'HKT',
+  // 대만
+  '타이베이': 'TPE',
+  // 유럽
+  '파리': 'CDG', '런던': 'LHR', '암스테르담': 'AMS', '프랑크푸르트': 'FRA',
+  '로마': 'FCO', '바르셀로나': 'BCN', '마드리드': 'MAD', '취리히': 'ZRH',
+  '이스탄불': 'IST', '모스크바': 'SVO', '비엔나': 'VIE', '프라하': 'PRG',
+  '뮌헨': 'MUC', '밀라노': 'MXP',
+  // 미주
+  '뉴욕': 'JFK', '로스앤젤레스': 'LAX', '샌프란시스코': 'SFO', '시카고': 'ORD',
+  '라스베가스': 'LAS', '시애틀': 'SEA', '밴쿠버': 'YVR', '토론토': 'YYZ',
+  '멕시코시티': 'MEX', '상파울루': 'GRU',
+  // 오세아니아
+  '시드니': 'SYD', '멜버른': 'MEL', '오클랜드': 'AKL', '브리즈번': 'BNE',
+  // 중동
+  '두바이': 'DXB', '아부다비': 'AUH', '도하': 'DOH',
+  // 인도
+  '뭄바이': 'BOM', '뉴델리': 'DEL',
+  // English
+  'seoul': 'ICN', 'incheon': 'ICN', 'gimpo': 'GMP', 'busan': 'PUS', 'jeju': 'CJU',
+  'tokyo': 'NRT', 'osaka': 'KIX', 'fukuoka': 'FUK', 'sapporo': 'CTS',
+  'beijing': 'PEK', 'shanghai': 'PVG', 'hong kong': 'HKG', 'hongkong': 'HKG',
+  'bangkok': 'BKK', 'singapore': 'SIN', 'bali': 'DPS', 'kuala lumpur': 'KUL',
+  'hanoi': 'HAN', 'ho chi minh': 'SGN', 'danang': 'DAD',
+  'taipei': 'TPE', 'paris': 'CDG', 'london': 'LHR', 'amsterdam': 'AMS',
+  'rome': 'FCO', 'barcelona': 'BCN', 'madrid': 'MAD', 'istanbul': 'IST',
+  'dubai': 'DXB', 'new york': 'JFK', 'los angeles': 'LAX', 'san francisco': 'SFO',
+  'sydney': 'SYD', 'melbourne': 'MEL', 'auckland': 'AKL',
+}
+
 const TABS = [
-  { id: "places",      label: "추천 장소",    icon: "📍" },
-  { id: "restaurants", label: "맛집",         icon: "🍽️" },
-  { id: "activities",  label: "경험·액티비티", icon: "🎭" },
-  { id: "itinerary",   label: "일정표",        icon: "📅" },
-  { id: "map",         label: "지도",          icon: "🗺️" },
-  { id: "weather",     label: "날씨",          icon: "🌤️" },
+  { id: "places",        label: "추천 장소",    icon: "📍" },
+  { id: "restaurants",   label: "맛집",         icon: "🍽️" },
+  { id: "activities",    label: "경험·액티비티", icon: "🎭" },
+  { id: "itinerary",     label: "일정표",        icon: "📅" },
+  { id: "map",           label: "지도",          icon: "🗺️" },
+  { id: "weather",       label: "날씨",          icon: "🌤️" },
 ]
 
 export default function TravelPlanner() {
@@ -27,6 +72,8 @@ export default function TravelPlanner() {
     adults: 2,
     children: 0,
     childAges: "",
+    originCity: "",
+    cabinClass: "economy",
   })
   const [activeTab, setActiveTab] = useState("places")
   const [status, setStatus] = useState("idle")
@@ -96,6 +143,7 @@ export default function TravelPlanner() {
        // 최근 검색 저장
        saveRecentSearch({
          destination,
+         originCity: data.originCity || '',
          startDate: data.startDate,
          endDate: data.endDate,
          adults: data.adults,
@@ -152,6 +200,27 @@ const normalizeItinerary = (raw, destination, dayCount) => {
     }))
   } catch {
     return generateItinerary(destination, dayCount)
+  }
+}
+
+const toIATA = async (city) => {
+  if (!city?.trim()) return null
+  const key = city.trim().toLowerCase()
+  if (IATA_MAP[key]) return IATA_MAP[key]
+  if (IATA_MAP[city.trim()]) return IATA_MAP[city.trim()]
+  // IATA 코드 직접 입력한 경우 (3자리 대문자)
+  if (/^[A-Z]{3}$/.test(city.trim())) return city.trim()
+  try {
+    const { data } = await supabase.functions.invoke('query-groq', {
+      body: {
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: `"${city}"의 IATA 공항 코드를 알파벳 대문자 3자리만 답해줘. 예시: ICN` }],
+      }
+    })
+    const code = data?.result?.trim().match(/\b[A-Z]{3}\b/)?.[0]
+    return code || null
+  } catch {
+    return null
   }
 }
 
@@ -228,7 +297,14 @@ const generateTravelData = async (destination, dayCount, startDate) => {
     }
   }
 
-  const [weatherRes, routeRes, itineraryRes, placesRes, restaurantsRes, activitiesRes] = await Promise.allSettled([
+  // IATA 변환 (originCity 없으면 flights skip)
+  const originCity = formData.originCity?.trim()
+  const [originCode, destCode] = await Promise.all([
+    toIATA(originCity),
+    toIATA(destination),
+  ])
+
+  const [weatherRes, routeRes, itineraryRes, placesRes, restaurantsRes, activitiesRes, accomBookingRes, accomTripRes, flightsRes] = await Promise.allSettled([
     // 1. 날씨 예보
     supabase.functions.invoke('query-weather', {
       body: { city: destination }
@@ -269,6 +345,38 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
     supabase.functions.invoke('query-places', {
       body: { destination, type: 'activities', lat: coordinates.lat, lng: coordinates.lng }
     }),
+    // 7-a. 숙소 Booking.com
+    supabase.functions.invoke('query-accommodation', {
+      body: {
+        destination,
+        checkin: formData.startDate,
+        checkout: formData.endDate,
+        guests: formData.adults || 2,
+        type: 'booking',
+      }
+    }),
+    // 7-b. 숙소 TripAdvisor
+    supabase.functions.invoke('query-accommodation', {
+      body: {
+        destination,
+        checkin: formData.startDate,
+        checkout: formData.endDate,
+        guests: formData.adults || 2,
+        type: 'tripadvisor',
+      }
+    }),
+    // 8. 항공편 (출발 도시 없으면 skip)
+    originCode && destCode
+      ? supabase.functions.invoke('query-duffel', {
+          body: {
+            origin: originCode,
+            destination: destCode,
+            date: formData.startDate,
+            passengers: formData.adults || 1,
+            cabin_class: formData.cabinClass || 'economy',
+          }
+        })
+      : Promise.resolve(null),
   ])
 
   // 날씨: 3시간 예보 → 일별 변환
@@ -330,6 +438,32 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
     ? (activitiesAI || getMinimalFallback(destination, coordinates, 'activities'))
     : activitiesData.places
 
+  // 숙소 (Booking.com / TripAdvisor 각각 저장)
+  const accommodationsBooking = accomBookingRes.status === 'fulfilled'
+    ? (accomBookingRes.value?.data?.accommodations || [])
+    : []
+  const accommodationsTripAdvisor = accomTripRes.status === 'fulfilled'
+    ? (accomTripRes.value?.data?.accommodations || [])
+    : []
+
+  // 항공편
+  let flights = []
+  let flightsError = null
+  if (!originCity) {
+    flightsError = null // 출발 도시 미입력 — FlightsTab에서 안내
+  } else if (flightsRes.status === 'rejected') {
+    flightsError = '항공편 검색 중 오류가 발생했습니다.'
+  } else if (!originCode || !destCode) {
+    flightsError = `공항 코드를 찾을 수 없습니다. (출발: ${originCity})`
+  } else if (flightsRes.value?.data?.flights) {
+    flights = flightsRes.value.data.flights
+  } else if (flightsRes.value?.data?.error) {
+    flightsError = flightsRes.value.data.error
+  } else if (flightsRes.value?.error) {
+    const e = flightsRes.value.error
+    flightsError = typeof e === 'string' ? e : (e?.message || '항공편 API 오류')
+  }
+
   return {
     destination,
     startDate: formData.startDate,
@@ -342,6 +476,13 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
     itinerary,
     weather,
     routeCoordinates,
+    accommodationsBooking,
+    accommodationsTripAdvisor,
+    flights,
+    flightsError,
+    originCity,
+    originCode: originCode || '',
+    destCode: destCode || '',
   }
 }
 
@@ -350,6 +491,7 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
     const recent = JSON.parse(localStorage.getItem('travelRecentSearches') || '[]')
     const newSearch = {
       destination: data.destination,
+      originCity: data.originCity || '',
       startDate: data.startDate,
       endDate: data.endDate,
       adults: data.adults,
@@ -370,6 +512,7 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
   const loadRecentSearch = (search) => {
     const updatedFormData = {
       destination: search.destination,
+      originCity: search.originCity || '',
       startDate: search.startDate,
       endDate: search.endDate,
       adults: search.adults,
@@ -394,6 +537,8 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
       adults: 2,
       children: 0,
       childAges: "",
+      originCity: "",
+      cabinClass: "economy",
     })
     setStatus("idle")
     setError("")
@@ -413,16 +558,29 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
                 <button className="error-close" onClick={() => setError("")}>×</button>
               </div>
             )}
-            <div className="form-group">
-              <label htmlFor="destination">여행지 *</label>
-              <input
-                id="destination"
-                type="text"
-                name="destination"
-                placeholder="예: 도쿄, 제주"
-                value={formData.destination}
-                onChange={handleInputChange}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="originCity">출발 도시 <span className="label-optional">(항공편 검색용)</span></label>
+                <input
+                  id="originCity"
+                  type="text"
+                  name="originCity"
+                  placeholder="예: 서울, 인천"
+                  value={formData.originCity}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="destination">여행지 *</label>
+                <input
+                  id="destination"
+                  type="text"
+                  name="destination"
+                  placeholder="예: 도쿄, 제주"
+                  value={formData.destination}
+                  onChange={handleInputChange}
+                />
+              </div>
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -531,12 +689,14 @@ type: attraction(관광)/lunch(식사)/activity(체험)/shopping(쇼핑)/nightvi
 
     return (
       <div className="tp-content-wrapper">
-        {activeTab === "places"      && <PlacesTab places={travelData.places} destination={travelData.destination} />}
-        {activeTab === "restaurants" && <RestaurantsTab restaurants={travelData.restaurants} destination={travelData.destination} />}
-        {activeTab === "activities"  && <ActivitiesTab activities={travelData.activities} destination={travelData.destination} />}
-        {activeTab === "itinerary"   && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} dayCount={travelData.dayCount} />}
-        {activeTab === "map"         && <MapTab places={travelData.places} restaurants={travelData.restaurants} activities={travelData.activities} destination={travelData.destination} coordinates={travelData.coordinates} routeCoordinates={travelData.routeCoordinates} />}
-        {activeTab === "weather"     && <WeatherTab weather={travelData.weather} destination={travelData.destination} startDate={travelData.startDate} />}
+        {activeTab === "places"         && <PlacesTab places={travelData.places} destination={travelData.destination} />}
+        {activeTab === "restaurants"    && <RestaurantsTab restaurants={travelData.restaurants} destination={travelData.destination} />}
+        {activeTab === "activities"     && <ActivitiesTab activities={travelData.activities} destination={travelData.destination} />}
+        {activeTab === "itinerary"      && <ItineraryTab itinerary={travelData.itinerary} destination={travelData.destination} dayCount={travelData.dayCount} />}
+        {activeTab === "map"            && <MapTab places={travelData.places} restaurants={travelData.restaurants} activities={travelData.activities} destination={travelData.destination} coordinates={travelData.coordinates} routeCoordinates={travelData.routeCoordinates} />}
+        {activeTab === "weather"        && <WeatherTab weather={travelData.weather} destination={travelData.destination} startDate={travelData.startDate} />}
+        {activeTab === "flights"        && <FlightsTab flights={travelData.flights} originCode={travelData.originCode} destCode={travelData.destCode} originCity={travelData.originCity} destination={travelData.destination} date={travelData.startDate} error={travelData.flightsError} />}
+        {activeTab === "accommodation"  && <AccommodationTab accommodationsBooking={travelData.accommodationsBooking} accommodationsTripAdvisor={travelData.accommodationsTripAdvisor} destination={travelData.destination} checkin={travelData.startDate} checkout={travelData.endDate} />}
       </div>
     )
   }

@@ -8,6 +8,21 @@ import { loadKakaoSDK, resetKakaoSDK } from './kakaoSDK'
 const KAKAO_KEY  = import.meta.env.VITE_KAKAO_MAP_KEY
 const STADIA_KEY = import.meta.env.VITE_STADIA_KEY
 
+// MiniKakaoMap과 동일한 브라우저 Fullscreen API 훅
+function useFullscreen(ref) {
+  const [isFull, setIsFull] = useState(false)
+  useEffect(() => {
+    const onChange = () => setIsFull(document.fullscreenElement === ref.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [ref])
+  const toggle = () => {
+    if (!document.fullscreenElement) ref.current?.requestFullscreen()
+    else document.exitFullscreen()
+  }
+  return [isFull, toggle]
+}
+
 // 국내(한반도·제주) 여부 판별
 function isKorea(lat, lng) {
   return lat >= 33.0 && lat <= 38.9 && lng >= 124.5 && lng <= 131.0
@@ -129,12 +144,20 @@ function makePopupEl(item, accentColor, onClose) {
 }
 
 function KakaoMapTab({ places, restaurants, activities, coordinates }) {
-  const mapDivRef   = useRef(null)
-  const mapRef      = useRef(null)
-  const overlaysRef = useRef([])
-  const fitRef      = useRef(null)
+  const containerRef = useRef(null)
+  const mapDivRef    = useRef(null)
+  const mapRef       = useRef(null)
+  const overlaysRef  = useRef([])
+  const fitRef       = useRef(null)
   const [ready, setReady]       = useState(false)
   const [sdkError, setSdkError] = useState('')
+  const [isFull, toggleFullscreen] = useFullscreen(containerRef)
+
+  useEffect(() => {
+    const onChange = () => setTimeout(() => mapRef.current?.relayout(), 150)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
 
   useEffect(() => {
     loadKakaoSDK()
@@ -168,11 +191,14 @@ function KakaoMapTab({ places, restaurants, activities, coordinates }) {
 
     kakao.maps.event.addListener(map, 'click', hidePopup)
 
+    const hasRealCoords = (c) => c?.lat && c?.lng &&
+      (Math.abs(c.lat - coordinates.lat) > 0.001 || Math.abs(c.lng - coordinates.lng) > 0.001)
+
     const addGroup = (items, color, fallback) => {
       if (!items?.length) return
       items.forEach((item, i) => {
-        const lat = item.coords?.lat || fallback(i)[0]
-        const lng = item.coords?.lng || fallback(i)[1]
+        const lat = hasRealCoords(item.coords) ? item.coords.lat : fallback(i)[0]
+        const lng = hasRealCoords(item.coords) ? item.coords.lng : fallback(i)[1]
         const pos = new kakao.maps.LatLng(lat, lng)
         allPos.push(pos)
 
@@ -194,7 +220,21 @@ function KakaoMapTab({ places, restaurants, activities, coordinates }) {
     if (allPos.length) {
       const bounds = new kakao.maps.LatLngBounds()
       allPos.forEach(p => bounds.extend(p))
-      fitRef.current = () => map.setBounds(bounds)
+      fitRef.current = () => {
+        map.relayout()
+        if (allPos.length === 1) {
+          map.setCenter(allPos[0])
+          map.setLevel(5)
+        } else {
+          map.setBounds(bounds, 80, 80, 80, 80)
+        }
+      }
+    } else {
+      fitRef.current = () => {
+        map.relayout()
+        map.setCenter(new kakao.maps.LatLng(coordinates.lat, coordinates.lng))
+        map.setLevel(7)
+      }
     }
 
     return () => { kakao.maps.event.removeListener(map, 'click', hidePopup) }
@@ -225,6 +265,14 @@ function KakaoMapTab({ places, restaurants, activities, coordinates }) {
     )
   }
 
+  const FS_BTN = {
+    position: 'absolute', top: 8, right: 8, zIndex: 1000,
+    background: 'rgba(15,23,42,0.75)', color: '#e2e8f0',
+    border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px',
+    padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 600,
+    backdropFilter: 'blur(4px)',
+  }
+
   return (
     <div className="tp-tab-content map-tab">
       <div className="map-header">
@@ -232,14 +280,19 @@ function KakaoMapTab({ places, restaurants, activities, coordinates }) {
         <p className="map-subtitle">모든 여행지와 맛집을 한눈에 확인하세요</p>
       </div>
       <div className="map-container" style={{ overflow: 'visible' }}>
-        <div style={{ position: 'relative' }}>
+        <div
+          ref={containerRef}
+          style={{ position: 'relative', borderRadius: isFull ? 0 : '14px', overflow: 'hidden', background: '#0f172a', height: isFull ? '100%' : '520px' }}
+        >
           {!ready && (
-            <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', borderRadius: '14px', color: '#94a3b8', fontSize: '0.9rem' }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: '#94a3b8', fontSize: '0.9rem' }}>
               🗺️ 지도 로딩 중...
             </div>
           )}
-          <div ref={mapDivRef} style={{ width: '100%', height: '520px', borderRadius: '14px' }} />
-          <button className="map-fit-btn kakao-fit-btn" onClick={() => fitRef.current?.()}>⊞ 전체 보기</button>
+          <div ref={mapDivRef} style={{ width: '100%', height: '100%' }} />
+          <button onClick={toggleFullscreen} style={FS_BTN}>
+            {isFull ? '✕ 닫기' : '⛶ 전체화면'}
+          </button>
         </div>
       </div>
       <div className="map-legend">
@@ -299,30 +352,30 @@ function DetailPopup({ item, color }) {
   )
 }
 
-function FitBoundsButton({ positions }) {
+function InvalidateSizeOnFullscreen() {
   const map = useMap()
   useEffect(() => {
-    if (!positions.length) return
-    const ctrl = L.control({ position: 'topright' })
-    ctrl.onAdd = () => {
-      const btn = L.DomUtil.create('button', 'map-fit-btn')
-      btn.innerHTML = '⊞ 전체 보기'
-      L.DomEvent.on(btn, 'click', e => { L.DomEvent.stopPropagation(e); map.fitBounds(L.latLngBounds(positions), { padding: [50, 50], maxZoom: 16 }) })
-      L.DomEvent.disableClickPropagation(btn)
-      return btn
-    }
-    ctrl.addTo(map)
-    return () => ctrl.remove()
-  }, [map, positions])
+    const onFs = () => setTimeout(() => map.invalidateSize(), 150)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [map])
   return null
 }
 
 function LeafletMapTab({ places, restaurants, activities, coordinates }) {
-  const allPositions = [
-    ...(places      || []).map((p, i) => [p.coords?.lat ?? (coordinates.lat + (i % 3 - 1) * 0.02),  p.coords?.lng ?? (coordinates.lng + (i % 2 === 0 ?  1 : -1) * 0.02)]),
-    ...(restaurants || []).map((r, i) => [r.coords?.lat ?? (coordinates.lat + (i % 2 === 0 ? -1 : 1) * 0.015), r.coords?.lng ?? (coordinates.lng + (i % 3 - 1) * 0.015)]),
-    ...(activities  || []).map((a, i) => [a.coords?.lat ?? (coordinates.lat + (i % 2 === 0 ?  1 : -1) * 0.025), a.coords?.lng ?? (coordinates.lng + (i % 3 - 1) * 0.025)]),
-  ]
+  const containerRef = useRef(null)
+  const [isFull, toggleFullscreen] = useFullscreen(containerRef)
+
+  const hasRealCoords = (c) => c?.lat && c?.lng &&
+    (Math.abs(c.lat - coordinates.lat) > 0.001 || Math.abs(c.lng - coordinates.lng) > 0.001)
+
+  const FS_BTN = {
+    position: 'absolute', top: 8, right: 8, zIndex: 1000,
+    background: 'rgba(15,23,42,0.75)', color: '#e2e8f0',
+    border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px',
+    padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 600,
+    backdropFilter: 'blur(4px)',
+  }
 
   return (
     <div className="tp-tab-content map-tab">
@@ -331,40 +384,52 @@ function LeafletMapTab({ places, restaurants, activities, coordinates }) {
         <p className="map-subtitle">모든 여행지와 맛집을 한눈에 확인하세요</p>
       </div>
       <div className="map-container">
-        <MapContainer center={[coordinates.lat, coordinates.lng]} zoom={13} style={{ width: '100%', height: '520px', borderRadius: '14px' }}>
-          <TileLayer attribution={STADIA_TILE.attr} url={STADIA_TILE.url} maxZoom={20} tileSize={256} detectRetina />
-          {allPositions.length > 0 && <FitBoundsButton positions={allPositions} />}
+        <div
+          ref={containerRef}
+          style={{ position: 'relative', borderRadius: isFull ? 0 : '14px', overflow: 'hidden', height: isFull ? '100%' : '520px' }}
+        >
+          <MapContainer
+            center={[coordinates.lat, coordinates.lng]}
+            zoom={13}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <TileLayer attribution={STADIA_TILE.attr} url={STADIA_TILE.url} maxZoom={20} tileSize={256} detectRetina />
+            <InvalidateSizeOnFullscreen />
 
-          {places?.map((p, i) => {
-            const lat = p.coords?.lat ?? (coordinates.lat + (i % 3 - 1) * 0.02)
-            const lng = p.coords?.lng ?? (coordinates.lng + (i % 2 === 0 ? 1 : -1) * 0.02)
-            return (
-              <Marker key={`p-${i}`} position={[lat, lng]} icon={createIcon(p.image, '#3b82f6')}>
-                <Popup maxWidth={260}><DetailPopup item={p} color='#3b82f6' /></Popup>
-              </Marker>
-            )
-          })}
+            {places?.map((p, i) => {
+              const lat = hasRealCoords(p.coords) ? p.coords.lat : (coordinates.lat + (i % 3 - 1) * 0.02)
+              const lng = hasRealCoords(p.coords) ? p.coords.lng : (coordinates.lng + (i % 2 === 0 ? 1 : -1) * 0.02)
+              return (
+                <Marker key={`p-${i}`} position={[lat, lng]} icon={createIcon(p.image, '#3b82f6')}>
+                  <Popup maxWidth={260}><DetailPopup item={p} color='#3b82f6' /></Popup>
+                </Marker>
+              )
+            })}
 
-          {restaurants?.map((r, i) => {
-            const lat = r.coords?.lat ?? (coordinates.lat + (i % 2 === 0 ? -1 : 1) * 0.015)
-            const lng = r.coords?.lng ?? (coordinates.lng + (i % 3 - 1) * 0.015)
-            return (
-              <Marker key={`r-${i}`} position={[lat, lng]} icon={createIcon(r.image, '#ef4444')}>
-                <Popup maxWidth={260}><DetailPopup item={r} color='#ef4444' /></Popup>
-              </Marker>
-            )
-          })}
+            {restaurants?.map((r, i) => {
+              const lat = hasRealCoords(r.coords) ? r.coords.lat : (coordinates.lat + (i % 2 === 0 ? -1 : 1) * 0.015)
+              const lng = hasRealCoords(r.coords) ? r.coords.lng : (coordinates.lng + (i % 3 - 1) * 0.015)
+              return (
+                <Marker key={`r-${i}`} position={[lat, lng]} icon={createIcon(r.image, '#ef4444')}>
+                  <Popup maxWidth={260}><DetailPopup item={r} color='#ef4444' /></Popup>
+                </Marker>
+              )
+            })}
 
-          {activities?.map((a, i) => {
-            const lat = a.coords?.lat ?? (coordinates.lat + (i % 2 === 0 ? 1 : -1) * 0.025)
-            const lng = a.coords?.lng ?? (coordinates.lng + (i % 3 - 1) * 0.025)
-            return (
-              <Marker key={`a-${i}`} position={[lat, lng]} icon={createIcon(a.image, '#10b981')}>
-                <Popup maxWidth={260}><DetailPopup item={a} color='#10b981' /></Popup>
-              </Marker>
-            )
-          })}
-        </MapContainer>
+            {activities?.map((a, i) => {
+              const lat = hasRealCoords(a.coords) ? a.coords.lat : (coordinates.lat + (i % 2 === 0 ? 1 : -1) * 0.025)
+              const lng = hasRealCoords(a.coords) ? a.coords.lng : (coordinates.lng + (i % 3 - 1) * 0.025)
+              return (
+                <Marker key={`a-${i}`} position={[lat, lng]} icon={createIcon(a.image, '#10b981')}>
+                  <Popup maxWidth={260}><DetailPopup item={a} color='#10b981' /></Popup>
+                </Marker>
+              )
+            })}
+          </MapContainer>
+          <button onClick={toggleFullscreen} style={FS_BTN}>
+            {isFull ? '✕ 닫기' : '⛶ 전체화면'}
+          </button>
+        </div>
       </div>
       <div className="map-legend">
         <div className="legend-item"><div className="legend-color" style={{ background: '#3b82f6' }}>📍</div><span>추천 장소</span></div>
