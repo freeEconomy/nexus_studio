@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Sparkles, User } from 'lucide-react'
+import { Sparkles, User, Trash2, Info, X } from 'lucide-react'
 import './AiAssistant.css'
 
 const supabase = createClient(
@@ -43,6 +43,55 @@ const dDay = (due) => {
   return `D+${Math.abs(diff)}`
 }
 
+  // ── 형식 도움말 모달 ────────────────────────────────────
+  function FormatHelpModal({ onClose, onSelectFormat }) {
+    const formats = [
+      {
+        label: "📋 업무 등록/수정 형식",
+        content: `유형 : 등록 / 수정
+업무 : 업무 제목
+내용 : 업무 상세 내용
+이슈번호 : 지라 번호 (선택)
+상태 : 접수 / 분석중 / 진행중 / 보류 / 완료
+서비스 : MC 또는 MS
+우선순위 : 높음 / 보통 / 낮음 (선택)`
+    }
+  ]
+
+  return (
+    <div className="format-modal-overlay" onClick={onClose}>
+      <div className="format-modal" onClick={e => e.stopPropagation()}>
+        <div className="format-modal-header">
+          <div className="header-title">
+            <span className="header-icon">📋</span>
+            <h3>직접 입력 형식 안내</h3>
+          </div>
+          <button className="close-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="format-modal-body">
+          <p className="modal-intro">원하는 형식을 선택하거나, 복사하여 사용하세요.</p>
+          <div className="format-list">
+            {formats.map((fmt, index) => (
+              <div key={index} className="format-item">
+                <div className="format-item-header">
+                  <h4>{fmt.label}</h4>
+                </div>
+                <div className="format-code-wrap">
+                  <pre className="format-code">{fmt.content}</pre>
+                  <CopyButton text={fmt.content} />
+                </div>
+                <button className="select-format-btn" onClick={() => onSelectFormat(fmt.content)}>
+                  이 형식으로 입력
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── 채팅 메시지 목록 (입력란 제외) ──────────────────────
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
@@ -58,12 +107,27 @@ function CopyButton({ text }) {
   )
 }
 
-function ChatTab({ messages, loading }) {
+function ChatTab({ messages, loading, onOptionClick, onFormatClick }) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  // '형식' 텍스트를 클릭 가능한 링크로 변환
+  const renderContent = (content) => {
+    if (content.includes('형식')) {
+      const parts = content.split('형식')
+      return (
+        <span>
+          {parts[0]}
+          <span className="format-link-trigger" onClick={onFormatClick}>형식</span>
+          {parts[1]}
+        </span>
+      )
+    }
+    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+  }
 
   return (
     <div className="chat-tab">
@@ -75,7 +139,24 @@ function ChatTab({ messages, loading }) {
               <div className="chat-content">
                 {m.role === 'user'
                   ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
-                  : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                  : (
+                    <>
+                      {i === 0 ? renderContent(m.content) : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>}
+                      {m.options && (
+                        <div className="chat-options">
+                          {m.options.map(opt => (
+                            <button 
+                              key={typeof opt === 'string' ? opt : opt.id} 
+                              className={`chat-option-btn ${opt === '취소' ? 'opt-cancel' : ''}`}
+                              onClick={() => onOptionClick(typeof opt === 'string' ? opt : opt.label, opt)}
+                            >
+                              {typeof opt === 'string' ? opt : opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
                 }
               </div>
               <CopyButton text={m.content} />
@@ -120,6 +201,16 @@ function TaskCard({ task, onUpdate }) {
     setOpen(false)
   }
 
+  const deleteTask = async (e) => {
+    e.stopPropagation()
+    if (!confirm(`'${task.title}' 업무를 삭제하시겠습니까?`)) return
+    setSaving(true)
+    const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+    if (error) alert('삭제 실패: ' + error.message)
+    onUpdate()
+    setSaving(false)
+  }
+
   return (
     <div className={`task-card status-${sm.color}`} onClick={() => setOpen(!open)}>
       <div className="task-card-top">
@@ -127,6 +218,9 @@ function TaskCard({ task, onUpdate }) {
         <span className={`svc-badge svc-${task.service.toLowerCase()}`}>{task.service}</span>
         {dd && <span className={`dday ${dd.startsWith('D+') ? 'overdue' : dd === 'D-day' ? 'today' : ''}`}>{dd}</span>}
         <span className={`priority-dot pri-${task.priority}`} title={PRIORITY_META[task.priority]?.label} />
+        <button className="task-delete-btn" onClick={deleteTask} title="삭제">
+          <Trash2 size={14} />
+        </button>
       </div>
       <div className="task-title">{task.title}</div>
       {task.requester && <div className="task-meta">요청자: {task.requester}</div>}
@@ -299,49 +393,47 @@ export default function AiAssistant() {
   const [activeTab, setActiveTab] = useState('chat')
   const [tasks, setTasks] = useState([])
   const [tasksLoading, setTasksLoading] = useState(false)
+  const [showFormatModal, setShowFormatModal] = useState(false)
 
-  // 채팅 state (입력란 고정을 위해 상위로 이동)
-const [messages, setMessages] = useState([
-  { 
-    role: 'assistant', 
-    content: `안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.
+  // 채팅 state
+  const [messages, setMessages] = useState([
+    { 
+      role: 'assistant', 
+      content: `안녕하세요! MAMF AI 비서입니다. 업무 등록, 현황 조회, 주간보고 생성을 도와드립니다.
 
-📋 **업무 등록 방법**
+📋 **업무 관리 방법**
 
-아래 형식으로 입력해주세요.
-
-\`\`\`
-유형 : 등록 / 수정
-업무 : 업무 제목
-내용 : 업무 상세 내용
-이슈번호 : 지라 번호 (선택)
-상태 : 접수 / 분석중 / 진행중 / 보류 / 완료
-서비스 : MC 또는 MS
-우선순위 : 높음 / 보통 / 낮음 (선택)
-\`\`\`
-
----
-
-💡 **다른 기능**
-- \`MC 업무 현황 알려줘\`
-- \`MS 진행중인 업무 보여줘\`
-- \`MC 주간보고 만들어줘\`
-- 업무 상태 변경, 메모 추가 등`
-  }
-])
+"업무 등록" 또는 "업무 수정"이라고 말씀하시거나, 아래 버튼을 눌러 단계별로 진행할 수 있습니다.
+(형식을 맞춰 한 번에 입력하셔도 됩니다.)`
+    }
+  ])
 
   const [input, setInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const textareaRef = useRef(null)
 
-  // textarea 자동 높이 조절 (위로 확장)
+  // 단계별 업무 등록/수정 상태
+  const [regStep, setRegStep] = useState(null) // null | service | type | task_select | title | content | status | priority | confirm
+  const [taskDraft, setTaskDraft] = useState({
+    id: '', // 수정 시 사용
+    service: '',
+    type: '',
+    title: '',
+    content: '',
+    status: '',
+    priority: '',
+    issue: '',
+    oldContent: '', // 기존 내용 보관용
+    oldIssue: ''    // 기존 이슈 보관용
+  })
+
+  // textarea 자동 높이 조절
   const autoResize = (el) => {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
-  // input 초기화 시 높이 리셋
   useEffect(() => {
     if (!input && textareaRef.current) textareaRef.current.style.height = 'auto'
   }, [input])
@@ -362,15 +454,184 @@ const [messages, setMessages] = useState([
     if (activeTab === 'chat') textareaRef.current?.focus()
   }, [activeTab])
 
-  // 응답 완료 후 textarea 재활성화되면 즉시 포커스
   useEffect(() => {
     if (!chatLoading && activeTab === 'chat') {
       setTimeout(() => textareaRef.current?.focus(), 0)
     }
   }, [chatLoading])
 
-  const sendMessage = async (msg) => {
+  const handleRegistration = async (displayValue, originalOpt) => {
+    setInput('')
+    setMessages(prev => [...prev, { role: 'user', content: displayValue }])
+    
+    if (displayValue === '취소') {
+      setMessages(prev => [...prev, { role: 'assistant', content: '업무 관리를 취소했습니다. 무엇을 도와드릴까요?' }])
+      setRegStep(null)
+      setTaskDraft({
+        id: '', service: '', type: '', title: '', content: '', status: '', priority: '', issue: '', oldContent: '', oldIssue: ''
+      })
+      return
+    }
+
+    let nextStep = null
+    let assistantMsg = ''
+    let options = null
+    const updatedDraft = { ...taskDraft }
+
+    if (regStep === 'service') {
+      updatedDraft.service = displayValue.toUpperCase()
+      
+      if (updatedDraft.type === '등록') {
+        assistantMsg = '**업무 제목**을 입력해주세요. (취소를 원하시면 "취소" 입력)'
+        options = ['취소']
+        nextStep = 'title'
+      } else {
+        const svcTasks = tasks.filter(t => t.service === updatedDraft.service && t.status !== 'done')
+        if (svcTasks.length === 0) {
+          assistantMsg = `${updatedDraft.service} 서비스에 진행 중인 업무가 없습니다. 새로운 업무를 **등록**하시겠습니까?`
+          options = ['등록', '취소']
+          nextStep = 'type'
+        } else {
+          assistantMsg = '수정할 업무를 선택해주세요.'
+          options = [...svcTasks.slice(0, 10).map(t => ({ id: t.id, label: t.title, task: t })), '취소']
+          nextStep = 'task_select'
+        }
+      }
+    } else if (regStep === 'type') {
+      updatedDraft.type = displayValue
+      assistantMsg = `알겠습니다. 먼저 어떤 **서비스**의 업무인가요?`
+      options = ['MC', 'MS', '취소']
+      nextStep = 'service'
+    } else if (regStep === 'task_select') {
+      const selectedTask = originalOpt?.task
+      if (selectedTask) {
+        updatedDraft.id = selectedTask.id
+        updatedDraft.title = selectedTask.title
+        updatedDraft.content = selectedTask.description || ''
+        updatedDraft.oldContent = selectedTask.description || '(내용 없음)'
+        updatedDraft.status = Object.entries(STATUS_META).find(([k,v]) => k === selectedTask.status)?.[1].label || selectedTask.status
+        updatedDraft.priority = Object.entries(PRIORITY_META).find(([k,v]) => k === selectedTask.priority)?.[1].label || selectedTask.priority
+        updatedDraft.issue = selectedTask.issue || ''
+        updatedDraft.oldIssue = selectedTask.issue || '(없음)'
+        
+        assistantMsg = `[${selectedTask.title}] 업무를 선택하셨습니다. 변경할 **상세 내용**을 입력해주세요. (유지하려면 "유지", 취소는 "취소" 입력)
+        
+**기존 내용:**
+> ${updatedDraft.oldContent}`
+        options = ['유지', '취소']
+        nextStep = 'content'
+      } else {
+        assistantMsg = '업무를 다시 선택해주세요.'
+        options = ['취소']
+        nextStep = 'task_select'
+      }
+    } else if (regStep === 'title') {
+      updatedDraft.title = displayValue
+      assistantMsg = '**상세 내용**을 입력해주세요. (취소는 "취소" 입력)'
+      options = ['취소']
+      nextStep = 'content'
+    } else if (regStep === 'content') {
+      if (displayValue !== '유지') {
+        updatedDraft.content = displayValue
+      }
+      assistantMsg = '업무의 **현재 상태**는 무엇인가요?'
+      options = ['접수', '분석중', '진행중', '보류', '완료', '취소']
+      nextStep = 'status'
+    } else if (regStep === 'status') {
+      updatedDraft.status = displayValue
+      if (updatedDraft.type === '수정') {
+        assistantMsg = `마지막으로 **지라 번호**가 있다면 입력해주세요. (없으면 "없음", 기존 유지 시 "유지", 취소는 "취소" 입력)
+        
+**기존 정보:** ${updatedDraft.oldIssue}`
+        options = ['유지', '없음', '취소']
+        nextStep = 'confirm'
+      } else {
+        assistantMsg = '**우선순위**를 선택해주세요.'
+        options = ['높음', '보통', '낮음', '취소']
+        nextStep = 'priority'
+      }
+    } else if (regStep === 'priority') {
+      updatedDraft.priority = displayValue
+      assistantMsg = '마지막으로 **지라 번호**가 있다면 입력해주세요. (없으면 "없음", 취소는 "취소" 입력)'
+      options = ['없음', '취소']
+      nextStep = 'confirm'
+    } else if (regStep === 'confirm') {
+      if (displayValue !== '유지') {
+        updatedDraft.issue = (displayValue === '없음' || displayValue === '없어') ? '' : displayValue
+      }
+      
+      let finalMsg = ''
+      if (updatedDraft.type === '수정') {
+        finalMsg = `유형 : 수정
+업무ID : ${updatedDraft.id}
+업무 : ${updatedDraft.title}
+내용 : ${updatedDraft.content}
+이슈번호 : ${updatedDraft.issue}
+상태 : ${updatedDraft.status}
+서비스 : ${updatedDraft.service}`
+      } else {
+        finalMsg = `유형 : 등록
+업무 : ${updatedDraft.title}
+내용 : ${updatedDraft.content}
+이슈번호 : ${updatedDraft.issue}
+상태 : ${updatedDraft.status}
+서비스 : ${updatedDraft.service}
+우선순위 : ${updatedDraft.priority}`
+      }
+
+      setChatLoading(true)
+      const { data, error } = await supabase.functions.invoke('assistant-agent', {
+        body: { message: finalMsg },
+      })
+      
+      if (error || !data) {
+        assistantMsg = '처리 중 오류가 발생했습니다. 다시 시도해주세요.'
+      } else {
+        assistantMsg = data.reply
+        if (data.tasks !== null) loadTasks()
+      }
+      setRegStep(null)
+      setChatLoading(false)
+    }
+
+    setTaskDraft(updatedDraft)
+    if (assistantMsg) {
+      setMessages(prev => [...prev, { role: 'assistant', content: assistantMsg, options }])
+    }
+    setRegStep(nextStep)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  const sendMessage = async (msg, originalOpt) => {
     if (!msg.trim() || chatLoading) return
+
+    if (regStep) {
+      handleRegistration(msg, originalOpt)
+      return
+    }
+
+    if (msg.includes('업무 등록') || msg.includes('업무등록')) {
+      setInput('')
+      setMessages(prev => [...prev, 
+        { role: 'user', content: msg },
+        { role: 'assistant', content: '업무 등록을 도와드릴게요. 먼저 어떤 **서비스**의 업무인가요?', options: ['MC', 'MS', '취소'] }
+      ])
+      setRegStep('service')
+      setTaskDraft(prev => ({ ...prev, type: '등록' }))
+      return
+    }
+
+    if (msg.includes('업무 수정') || msg.includes('업무수정')) {
+      setInput('')
+      setMessages(prev => [...prev, 
+        { role: 'user', content: msg },
+        { role: 'assistant', content: '업무 수정을 도와드릴게요. 먼저 어떤 **서비스**의 업무인가요?', options: ['MC', 'MS', '취소'] }
+      ])
+      setRegStep('service')
+      setTaskDraft(prev => ({ ...prev, type: '수정' }))
+      return
+    }
+
     setInput('')
     setTimeout(() => textareaRef.current?.focus(), 0)
     setMessages(prev => [...prev, { role: 'user', content: msg }])
@@ -395,11 +656,14 @@ const [messages, setMessages] = useState([
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  const CHIPS = [
+const CHIPS = [
+    '업무 등록',
+    '업무 수정',
     'MC 업무 현황 알려줘',
     'MS 업무 현황 알려줘',
-    '현재 진행중인 업무가 뭐야?',
   ]
+
+
 
   return (
     <div className="ai-assistant">
@@ -430,16 +694,38 @@ const [messages, setMessages] = useState([
       </div>
 
       <div className="ai-content">
-        {activeTab === 'chat'   && <ChatTab messages={messages} loading={chatLoading} />}
+      {activeTab === 'chat'   && (
+          <ChatTab 
+            messages={messages} 
+            loading={chatLoading} 
+            onOptionClick={sendMessage} 
+            onFormatClick={() => setShowFormatModal(true)}
+          />
+        )}
+
+      {showFormatModal && (
+        <FormatHelpModal 
+          onClose={() => setShowFormatModal(false)} 
+          onSelectFormat={(content) => {
+            setInput(content);
+            setShowFormatModal(false);
+            // 약간의 지연 후 높이 조절 및 포커스
+            setTimeout(() => {
+              if (textareaRef.current) {
+                autoResize(textareaRef.current);
+                textareaRef.current.focus();
+              }
+            }, 0);
+          }} 
+        />
+      )}
         {activeTab === 'tasks'  && <TasksTab tasks={tasks} loading={tasksLoading} onRefresh={loadTasks} />}
         {activeTab === 'report' && <ReportTab tasks={tasks} />}
       </div>
 
-      {/* 하단 고정 입력란 — 채팅 탭에서만 표시 */}
       {activeTab === 'chat' && (
         <div className="chat-input-fixed">
           <div className="chat-input-inner">
-            {/* 추천 칩스 */}
             <div className="chat-chips">
               {CHIPS.map(chip => (
                 <button
@@ -459,13 +745,14 @@ const [messages, setMessages] = useState([
               value={input}
               onChange={e => { setInput(e.target.value); autoResize(e.target) }}
               onKeyDown={handleKey}
-              placeholder="업무 내용을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈)"
+              placeholder={regStep ? "답변을 입력하세요..." : "업무 내용을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈)"}
               rows={1}
               disabled={chatLoading}
             />
           </div>
         </div>
       )}
+
     </div>
   )
 }

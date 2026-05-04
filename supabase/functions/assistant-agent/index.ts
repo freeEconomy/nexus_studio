@@ -112,12 +112,8 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     } catch { return `HTTP ${res.status}` }
   }
 
-  if (name === 'add_task') {
-    const now = new Date()
-    const weekNumber = Math.ceil(
-      ((now - new Date(now.getFullYear(), 0, 0) as any) / 86400000 + now.getDay()) / 7
-    )
-    const body = normalizeFields({ priority: 'normal', ...args, week_number: weekNumber })
+  if (name === 'add_task') {    
+    const body = normalizeFields({ priority: 'normal', ...args })
     const res = await fetch(`${supabaseUrl}/rest/v1/tasks`, {
       method: 'POST', headers,
       body: JSON.stringify(body),
@@ -148,7 +144,7 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     const task_id = args.task_id || args.id
     if (!task_id) return { success: false, error: 'task_id가 없습니다. get_tasks로 업무 목록을 먼저 조회하세요.' }
     // id/task_id 및 수정 불필요 필드 제외, 빈값 제거
-    const EXCLUDE = new Set(['task_id', 'id', 'title', 'service', 'week_number', 'created_at', 'updated_at'])
+    const EXCLUDE = new Set(['task_id', 'id', 'title', 'service', 'created_at', 'updated_at'])
     const updates = normalizeFields(
       Object.fromEntries(
         Object.entries(args).filter(([k, v]) => !EXCLUDE.has(k) && v !== '' && v !== null && v !== undefined)
@@ -173,7 +169,6 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
   if (name === 'generate_weekly_report') {
     let url = `${supabaseUrl}/rest/v1/tasks?select=*&status=not.in.(done,hold)&order=status.asc`
     if (args.service && args.service !== 'ALL') url += `&service=eq.${args.service}`
-    if (args.week_number) url += `&week_number=eq.${args.week_number}`
     const res = await fetch(url, { headers })
     if (!res.ok) return { tasks: [], error: await parseErr(res) }
     const rawTasks = await res.json()
@@ -197,7 +192,7 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
       }
     } catch { /* 템플릿 없으면 자유 형식 */ }
 
-    return { tasks, service: args.service || 'ALL', week_number: args.week_number, report_template }
+    return { tasks, service: args.service || 'ALL', report_template }
   }
 
   return { error: 'Unknown tool' }
@@ -224,6 +219,10 @@ Deno.serve(async (req) => {
 업무 상태: received(접수) / analyzing(분석중) / in_progress(진행중) / hold(보류) / done(완료)
 우선순위: high(높음) / normal(보통) / low(낮음)
 이슈번호: JIRA 티켓번호, GitHub 이슈번호 등 관련 이슈 추적 번호
+
+[업무 등록 안내]
+사용자가 업무 등록을 요청하면, 단계별 가이드가 프론트엔드에서 시작됩니다.
+만약 사용자가 한 번에 여러 정보를 제공하며 등록을 시도하면(예: "유형: 등록, 업무: 제목..."), add_task 툴을 사용하여 즉시 등록하세요.
 
 사용자 요청에 따라 적절한 툴을 사용해 업무를 등록·조회·수정하세요.
 응답은 항상 한국어로 친절하게 해주세요.`

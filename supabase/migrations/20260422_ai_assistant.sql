@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   requester   TEXT,
   due_date    DATE,
   memo        TEXT,
-  week_number INT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
