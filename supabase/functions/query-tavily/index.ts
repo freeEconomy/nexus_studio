@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { query, summarize = true, lang = 'ko' } = await req.json()
+    const { query, summarize = true, lang = 'ko', search_depth = 'basic', topic = 'general', days, max_results = 5 } = await req.json()
 
     if (!query) {
       return new Response(JSON.stringify({ error: 'query is required' }), {
@@ -35,9 +35,11 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         api_key: tavilyKey,
         query,
-        search_depth: 'basic',
+        search_depth,
+        topic,
         include_answer: true,
-        max_results: 5,
+        max_results,
+        ...(days !== undefined ? { days } : {}),
       }),
     })
 

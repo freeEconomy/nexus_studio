@@ -1,7 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bot, GitCompareArrows, MapPin, TrendingUp } from 'lucide-react'
+import { Bot, GitCompareArrows, MapPin, TrendingUp, Cpu, Newspaper, ExternalLink, RefreshCw } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
 import './Home.css'
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
 
 const FEATURES = [
   {
@@ -107,6 +113,122 @@ function ParticleCanvas() {
   return <canvas ref={ref} className="particle-canvas" />
 }
 
+// 뉴스 섹션
+function NewsSection() {
+  const [aiNews, setAiNews] = useState([])
+  const [generalNews, setGeneralNews] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+
+  const fetchNews = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('news-kr', {
+        body: { type: 'both', max_results: 5 },
+      })
+
+      if (fnErr) throw new Error(fnErr.message)
+      if (data?.ai) setAiNews(data.ai)
+      if (data?.general) setGeneralNews(data.general)
+      setLastUpdated(new Date())
+    } catch (e) {
+      setError('뉴스를 불러오는 데 실패했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchNews() }, [])
+
+  const formatTime = (date) => {
+    if (!date) return ''
+    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const formatDate = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    const now = new Date()
+    const diffMin = Math.floor((now - d) / 60000)
+    if (diffMin < 60) return `${diffMin}분 전`
+    if (diffMin < 1440) return `${Math.floor(diffMin / 60)}시간 전`
+    return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  }
+
+  const NewsCard = ({ item, index }) => (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="news-item"
+    >
+      <span className="news-index">{String(index + 1).padStart(2, '0')}</span>
+      <span className="news-body">
+        <span className="news-title">{item.title}</span>
+        <span className="news-meta">
+          {item.source && <span className="news-source">{item.source}</span>}
+          {item.published_date && <span className="news-time">{formatDate(item.published_date)}</span>}
+        </span>
+      </span>
+      <ExternalLink size={13} className="news-link-icon" />
+    </a>
+  )
+
+  return (
+    <section className="news-section">
+      <div className="news-header">
+        <h2 className="news-section-title">Today's News</h2>
+        <button className="news-refresh-btn" onClick={fetchNews} disabled={loading} title="새로고침">
+          <RefreshCw size={14} className={loading ? 'spinning' : ''} />
+          {lastUpdated && <span className="news-updated">{formatTime(lastUpdated)} 업데이트</span>}
+        </button>
+      </div>
+
+      <div className="news-grid">
+        {/* AI 뉴스 */}
+        <div className="news-col">
+          <div className="news-col-header ai-col-header">
+            <Cpu size={15} />
+            <span>AI 탑뉴스</span>
+          </div>
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="news-skeleton" />
+            ))
+          ) : error ? (
+            <p className="news-error">{error}</p>
+          ) : aiNews.length === 0 ? (
+            <p className="news-error">뉴스를 찾을 수 없습니다.</p>
+          ) : (
+            aiNews.map((item, i) => <NewsCard key={i} item={item} index={i} />)
+          )}
+        </div>
+
+        {/* 일반 뉴스 */}
+        <div className="news-col">
+          <div className="news-col-header general-col-header">
+            <Newspaper size={15} />
+            <span>주요 뉴스</span>
+          </div>
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="news-skeleton" />
+            ))
+          ) : error ? (
+            <p className="news-error">{error}</p>
+          ) : generalNews.length === 0 ? (
+            <p className="news-error">뉴스를 찾을 수 없습니다.</p>
+          ) : (
+            generalNews.map((item, i) => <NewsCard key={i} item={item} index={i} />)
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export default function Home() {
   return (
     <div className="home">
@@ -151,6 +273,9 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* 뉴스 섹션 */}
+      <NewsSection />
     </div>
   )
 }

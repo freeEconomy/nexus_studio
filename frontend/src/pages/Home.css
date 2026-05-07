@@ -256,3 +256,182 @@
   .features { padding: 0 1rem 3rem; }
   .features-grid { grid-template-columns: 1fr; }
 }
+
+/* ── 뉴스 섹션 ───────────────────────────────────────── */
+.news-section {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 1.5rem 5rem;
+}
+
+.news-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.news-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.news-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.news-refresh-btn:hover:not(:disabled) {
+  color: #94a3b8;
+  border-color: rgba(255,255,255,0.15);
+}
+.news-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.news-updated { color: #475569; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spinning { animation: spin 1s linear infinite; }
+
+.news-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.news-col {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.news-col-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.ai-col-header {
+  color: #a78bfa;
+  background: rgba(124,58,237,0.08);
+}
+
+.general-col-header {
+  color: #60a5fa;
+  background: rgba(37,99,235,0.08);
+}
+
+.news-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  text-decoration: none;
+  color: #cbd5e1;
+  transition: background 0.18s, color 0.18s;
+  cursor: pointer;
+}
+.news-item:last-child { border-bottom: none; }
+.news-item:hover {
+  background: rgba(255,255,255,0.04);
+  color: #e2e8f0;
+}
+.news-item:hover .news-link-icon { opacity: 1; }
+
+.news-index {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #334155;
+  min-width: 20px;
+}
+
+.news-title {
+  flex: 1;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-link-icon {
+  flex-shrink: 0;
+  color: #475569;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+
+.news-skeleton {
+  height: 44px;
+  margin: 6px 1.1rem;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmerSkeleton 1.4s infinite;
+}
+@keyframes shimmerSkeleton {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.news-error {
+  padding: 1.5rem 1.1rem;
+  font-size: 0.82rem;
+  color: #475569;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .news-grid { grid-template-columns: 1fr; }
+  .news-section { padding: 0 1rem 3rem; }
+}
+
+/* 뉴스 카드 본문/메타 */
+.news-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.news-source {
+  font-size: 0.7rem;
+  color: #334155;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.news-time {
+  font-size: 0.7rem;
+  color: #334155;
+  white-space: nowrap;
+}

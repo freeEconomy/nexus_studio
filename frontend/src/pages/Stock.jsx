@@ -831,6 +831,18 @@ function PortfolioTab() {
   const [aiData, setAiData] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
 
+  // 종목 추가 관련 상태
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [newStock, setNewStock] = useState({
+    ticker: '',
+    name: '',
+    market: 'US',
+    quantity: '',
+    avg_price: '',
+    portfolio_id: '',
+  })
+
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
@@ -839,11 +851,18 @@ function PortfolioTab() {
       supabase.from('portfolios').select('*').order('id'),
       supabase.from('portfolio').select('*'),
     ])
-    setPortfolios(pfRows?.length ? pfRows : [
+    const loadedPfs = pfRows?.length ? pfRows : [
       { id: 1, name: '포트폴리오 1' },
       { id: 2, name: '포트폴리오 2' },
       { id: 3, name: '포트폴리오 3' },
-    ])
+    ]
+    setPortfolios(loadedPfs)
+    
+    // 신규 추가 시 기본 포트폴리오 ID 설정
+    if (!newStock.portfolio_id && loadedPfs.length > 0) {
+      setNewStock(prev => ({ ...prev, portfolio_id: loadedPfs[0].id }))
+    }
+
     if (!error && stockRows) {
        const withPx = await Promise.allSettled(
          stockRows.map(async s => {
@@ -858,6 +877,30 @@ function PortfolioTab() {
       setStocks(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
     }
     setLoading(false)
+  }
+
+  const handleAddStock = async (e) => {
+    e.preventDefault()
+    if (!newStock.ticker || !newStock.quantity || !newStock.avg_price) {
+      alert('모든 필드를 입력해주세요.')
+      return
+    }
+    setIsSubmitting(true)
+    const { error } = await supabase.from('portfolio').insert([{
+      ...newStock,
+      quantity: Number(newStock.quantity),
+      avg_price: Number(newStock.avg_price),
+      portfolio_id: Number(newStock.portfolio_id)
+    }])
+    
+    if (error) {
+      alert('추가 실패: ' + error.message)
+    } else {
+      setShowAddForm(false)
+      setNewStock({ ticker: '', name: '', market: 'US', quantity: '', avg_price: '', portfolio_id: portfolios[0]?.id })
+      loadAll()
+    }
+    setIsSubmitting(false)
   }
 
   const saveName = async (id) => {
@@ -888,7 +931,79 @@ function PortfolioTab() {
 
   return (
     <div className="pf-tab">
-      {loading ? <Spinner /> : (
+      <div className="pf-tab-hdr">
+        <h2 className="tab-title">내 포트폴리오</h2>
+        <div className="pf-tab-actions">
+          <button className="pf-action-btn refresh" onClick={loadAll} disabled={loading} title="새로고침">
+            {loading ? '...' : '↻ 새로고침'}
+          </button>
+          <button className="pf-action-btn add" onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? '닫기' : '+ 종목 추가'}
+          </button>
+        </div>
+      </div>
+
+      {showAddForm && (
+        <form className="add-stock-form dash-card" onSubmit={handleAddStock}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>시장</label>
+              <select value={newStock.market} onChange={e => setNewStock({...newStock, market: e.target.value})}>
+                <option value="US">🇺🇸 미국 (US)</option>
+                <option value="KR">🇰🇷 한국 (KR)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>티커/코드</label>
+              <input 
+                placeholder="AAPL 또는 005930" 
+                value={newStock.ticker} 
+                onChange={e => setNewStock({...newStock, ticker: e.target.value.toUpperCase()})}
+              />
+            </div>
+            <div className="form-group">
+              <label>종목명 (선택)</label>
+              <input 
+                placeholder="애플" 
+                value={newStock.name} 
+                onChange={e => setNewStock({...newStock, name: e.target.value})}
+              />
+            </div>
+            <div className="form-group">
+              <label>수량</label>
+              <input 
+                type="number" 
+                placeholder="0" 
+                value={newStock.quantity} 
+                onChange={e => setNewStock({...newStock, quantity: e.target.value})}
+              />
+            </div>
+            <div className="form-group">
+              <label>평균단가</label>
+              <input 
+                type="number" 
+                step="any" 
+                placeholder="0.00" 
+                value={newStock.avg_price} 
+                onChange={e => setNewStock({...newStock, avg_price: e.target.value})}
+              />
+            </div>
+            <div className="form-group">
+              <label>포트폴리오</label>
+              <select value={newStock.portfolio_id} onChange={e => setNewStock({...newStock, portfolio_id: e.target.value})}>
+                {portfolios.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button type="submit" className="form-submit-btn" disabled={isSubmitting}>
+            {isSubmitting ? '추가 중...' : '포트폴리오에 추가'}
+          </button>
+        </form>
+      )}
+
+      {loading && stocks.length === 0 ? <Spinner /> : (
         <div className="pf-multi-cols">
           {portfolios.map(pf => {
             const { col, usTotal, krTotal, totalKRW } = getColStats(pf.id)

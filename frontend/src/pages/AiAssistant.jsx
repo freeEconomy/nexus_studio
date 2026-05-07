@@ -107,6 +107,27 @@ function CopyButton({ text }) {
   )
 }
 
+// '형식' 플레이스홀더를 클릭 가능한 span으로 재귀 변환
+function replaceFormatPlaceholder(children, placeholder, onClick) {
+  return Array.isArray(children)
+    ? children.map((child, i) =>
+        typeof child === 'string'
+          ? child.split(placeholder).flatMap((part, j, arr) =>
+              j < arr.length - 1
+                ? [part, <span key={`${i}-${j}`} className="format-link-trigger" onClick={onClick}>형식</span>]
+                : [part]
+            )
+          : child
+      )
+    : typeof children === 'string'
+    ? children.split(placeholder).flatMap((part, j, arr) =>
+        j < arr.length - 1
+          ? [part, <span key={j} className="format-link-trigger" onClick={onClick}>형식</span>]
+          : [part]
+      )
+    : children
+}
+
 function ChatTab({ messages, loading, onOptionClick, onFormatClick }) {
   const bottomRef = useRef(null)
 
@@ -117,13 +138,29 @@ function ChatTab({ messages, loading, onOptionClick, onFormatClick }) {
   // '형식' 텍스트를 클릭 가능한 링크로 변환
   const renderContent = (content) => {
     if (content.includes('형식')) {
-      const parts = content.split('형식')
+      // '형식' 단어를 플레이스홀더로 치환 후 마크다운 렌더링,
+      // 그 다음 플레이스홀더를 클릭 가능한 span으로 교체
+      const PLACEHOLDER = '__FORMAT_LINK__'
+      const replaced = content.replaceAll('형식', PLACEHOLDER)
       return (
-        <span>
-          {parts[0]}
-          <span className="format-link-trigger" onClick={onFormatClick}>형식</span>
-          {parts[1]}
-        </span>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // 텍스트 노드에서 플레이스홀더를 클릭 링크로 교체
+            p: ({ children }) => (
+              <p>
+                {replaceFormatPlaceholder(children, PLACEHOLDER, onFormatClick)}
+              </p>
+            ),
+            li: ({ children }) => (
+              <li>
+                {replaceFormatPlaceholder(children, PLACEHOLDER, onFormatClick)}
+              </li>
+            ),
+          }}
+        >
+          {replaced}
+        </ReactMarkdown>
       )
     }
     return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
