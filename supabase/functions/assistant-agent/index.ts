@@ -260,10 +260,14 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
 
       if (res.ok) {
         const data = await res.json()
+        console.log(`[assistant-agent] Jira results for ${svc}: ${data.issues?.length || 0} issues`)
         if (data.issues) {
           // 서비스 정보 추가하여 합침
           combinedIssues.push(...data.issues.map((iss: any) => ({ ...iss, service: svc })))
         }
+      } else {
+        const errText = await res.text()
+        console.error(`[assistant-agent] Jira fetch failed for ${svc}: ${errText}`)
       }
     }
 

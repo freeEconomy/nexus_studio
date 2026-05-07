@@ -36,10 +36,10 @@ serve(async (req) => {
     if (jql) {
       console.log(`Searching Jira with JQL: ${jql}`)
       const response = await fetch(`${JIRA_HOST}/rest/api/2/search`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Authorization": `Bearer ${JIRA_TOKEN}`,
-          "Content-Type": "application/json",
+          'Authorization': `Bearer ${JIRA_TOKEN}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           jql,
@@ -50,18 +50,21 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errorText = await response.text()
+        console.error(`Jira Search API error: ${response.status}`, errorText)
         return new Response(
           JSON.stringify({ error: `Jira Search API error: ${response.status}`, details: errorText }),
-          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
       const data = await response.json()
-      const issues = data.issues.map((issue: any) => ({
+      console.log(`Jira API returned ${data.issues?.length || 0} issues`)
+
+      const issues = (data.issues || []).map((issue: any) => ({
         key: issue.key,
         summary: issue.fields.summary,
         status: issue.fields.status.name,
-        assignee: issue.fields.assignee?.displayName || "Unassigned",
+        assignee: issue.fields.assignee?.displayName || 'Unassigned',
         priority: issue.fields.priority?.name,
         url: `${JIRA_HOST}/browse/${issue.key}`,
         updated: issue.fields.updated
@@ -69,7 +72,7 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ issues }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
