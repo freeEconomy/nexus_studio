@@ -75,6 +75,21 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'query_jira',
+      description: 'Jira 이슈를 조회합니다. 서비스별 에픽(Epic) 하위 이슈나 특정 JQL로 검색하거나, 특정 이슈 키로 조회할 수 있습니다.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service: { type: ['string', 'null'], enum: ['MC', 'MS'], description: '서비스 구분 (MC 또는 MS). 이슈 키 조회시 생략 가능' },
+          jql: { type: ['string', 'null'], description: '직접 입력할 JQL 쿼리 (생략 시 서비스별 기본 JQL 사용)' },
+          issueKey: { type: ['string', 'null'], description: '단일 Jira 이슈 키 (예: PROJ-123). JQL과 함께 사용 불가.' },
+        },
+      },
+    },
+  },
 ]
 
 const STATUS_MAP: Record<string, string> = {
@@ -195,6 +210,66 @@ async function executeTool(name: string, args: any, supabaseUrl: string, service
     return { tasks, service: args.service || 'ALL', report_template }
   }
 
+  if (name === 'query_jira') {
+    const EPIC_MAP: Record<string, string> = {
+      'MC': 'MAMF-1645',
+      'MS': 'MAMF-1633',
+    }
+    
+    // 서비스가 지정되지 않은 경우(전체 조회) 처리
+    if (args.issueKey) {
+      const res = await fetch(`${supabaseUrl}/functions/v1/query-jira`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ issueKey: args.issueKey }),
+      })
+
+      if (!res.ok) {
+        return { issues: [], error: await parseErr(res) }
+      }
+      const data = await res.json()
+      // 단일 이슈 조회 결과는 { key, summary, ... } 형태이므로 배열로 감싸서 반환
+      return { issues: [data] }
+    }
+
+    // JQL 또는 서비스별 에픽 조회
+    const services = args.service ? [args.service] : ['MC', 'MS']
+    const combinedIssues = []
+
+    for (const svc of services) {
+      let jql = args.jql
+      if (!jql) {
+        const epicKey = EPIC_MAP[svc]
+        if (!epicKey) continue
+        // 사용자가 제공한 정확한 JQL 적용 (상태명 및 정렬 포함)
+        // TODO: Jira API 상태명에 맞게 조정 필요 (예: To Do -> 등록(To Do))
+        jql = `"Epic Link" = ${epicKey} AND status IN ("등록(To Do)", "진행중(In Progress)") ORDER BY created DESC`
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/query-jira`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ jql }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data.issues) {
+          // 서비스 정보 추가하여 합침
+          combinedIssues.push(...data.issues.map((iss: any) => ({ ...iss, service: svc })))
+        }
+      }
+    }
+
+    return { issues: combinedIssues }
+  }
+
   return { error: 'Unknown tool' }
 }
 
@@ -219,6 +294,18 @@ Deno.serve(async (req) => {
 업무 상태: received(접수) / analyzing(분석중) / in_progress(진행중) / hold(보류) / done(완료)
 우선순위: high(높음) / normal(보통) / low(낮음)
 이슈번호: JIRA 티켓번호, GitHub 이슈번호 등 관련 이슈 추적 번호
+
+[Jira 관련 정보]
+- MC 에픽: MAMF-1645
+- MS 에픽: MAMF-1633
+- 상태가 '대기' 또는 '진행중'인 이슈를 기본으로 조회합니다.
+
+[중요 지침: 업무 비교 및 등록]
+1. 사용자가 "업무 목록에 없는 이슈"를 찾으면:
+   - 먼저 get_tasks를 호출하여 현재 등록된 업무 목록을 가져옵니다.
+   - query_jira를 호출하여 Jira의 최신 이슈 목록을 가져옵니다.
+   - Jira 이슈 키(예: MAMF-123)가 현재 업무 목록의 'issue' 필드에 없는 것들만 골라 사용자에게 리스트로 보여주세요.
+2. 사용자가 리스트 중 특정 이슈를 등록해달라고 하면 add_task를 사용하세요.
 
 [업무 등록 안내]
 사용자가 업무 등록을 요청하면, 단계별 가이드가 프론트엔드에서 시작됩니다.

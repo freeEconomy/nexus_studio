@@ -2,13 +2,66 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Sparkles, User, Trash2, Info, X } from 'lucide-react'
+import { Sparkles, User, Trash2, Info, X, ExternalLink } from 'lucide-react'
 import './AiAssistant.css'
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
+
+// ── Jira 카드 컴포넌트 ───────────────────────────────────
+function JiraCard({ issueKey }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchJira = async () => {
+      try {
+        setLoading(true)
+        const { data: res, error: err } = await supabase.functions.invoke('query-jira', {
+          body: { issueKey }
+        })
+        if (err || res?.error) {
+          setError(err?.message || res?.error)
+        } else {
+          setData(res)
+        }
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchJira()
+  }, [issueKey])
+
+  if (loading) return (
+    <div className="jira-card loading">
+      <div className="jira-spinner" />
+      Jira 정보 불러오는 중 ({issueKey})...
+    </div>
+  )
+  if (error) return <div className="jira-card error">Jira 정보를 찾을 수 없습니다: {issueKey}</div>
+  if (!data) return null
+
+  return (
+    <div className="jira-card" onClick={(e) => e.stopPropagation()}>
+      <div className="jira-card-header">
+        <span className="jira-key">{data.key}</span>
+        <span className={`jira-status status-${data.status.toLowerCase().replace(/\s+/g, '-')}`}>{data.status}</span>
+      </div>
+      <div className="jira-summary">{data.summary}</div>
+      <div className="jira-footer">
+        <span className="jira-assignee">👤 {data.assignee}</span>
+        <a href={data.url} target="_blank" rel="noopener noreferrer" className="jira-link">
+          Jira에서 열기 <ExternalLink size={12} />
+        </a>
+      </div>
+    </div>
+  )
+}
 
 // ── 상수 ────────────────────────────────────────────────
 const STATUS_META = {
@@ -128,6 +181,8 @@ function replaceFormatPlaceholder(children, placeholder, onClick) {
     : children
 }
 
+const JIRA_KEY_REGEX = /[A-Z]+-\d+/g
+
 function ChatTab({ messages, loading, onOptionClick, onFormatClick }) {
   const bottomRef = useRef(null)
 
@@ -169,38 +224,50 @@ function ChatTab({ messages, loading, onOptionClick, onFormatClick }) {
   return (
     <div className="chat-tab">
       <div className="chat-messages">
-        {messages.map((m, i) => (
-          <div key={i} className={`chat-bubble ${m.role}`}>
-            {m.role === 'assistant' && <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}
-            <div className="chat-content-wrap">
-              <div className="chat-content">
-                {m.role === 'user'
-                  ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
-                  : (
-                    <>
-                      {i === 0 ? renderContent(m.content) : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>}
-                      {m.options && (
-                        <div className="chat-options">
-                          {m.options.map(opt => (
-                            <button 
-                              key={typeof opt === 'string' ? opt : opt.id} 
-                              className={`chat-option-btn ${opt === '취소' ? 'opt-cancel' : ''}`}
-                              onClick={() => onOptionClick(typeof opt === 'string' ? opt : opt.label, opt)}
-                            >
-                              {typeof opt === 'string' ? opt : opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )
-                }
+        {messages.map((m, i) => {
+          const jiraKeys = m.content.match(JIRA_KEY_REGEX) || []
+          // 중복 제거
+          const uniqueJiraKeys = [...new Set(jiraKeys)]
+
+          return (
+            <div key={i} className={`chat-bubble ${m.role}`}>
+              {m.role === 'assistant' && <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}
+              <div className="chat-content-wrap">
+                <div className="chat-content">
+                  {m.role === 'user'
+                    ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
+                    : (
+                      <>
+                        {i === 0 ? renderContent(m.content) : <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>}
+                        {m.options && (
+                          <div className="chat-options">
+                            {m.options.map(opt => (
+                              <button 
+                                key={typeof opt === 'string' ? opt : opt.id} 
+                                className={`chat-option-btn ${opt === '취소' ? 'opt-cancel' : ''}`}
+                                onClick={() => onOptionClick(typeof opt === 'string' ? opt : opt.label, opt)}
+                              >
+                                {typeof opt === 'string' ? opt : opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  }
+                  
+                  {uniqueJiraKeys.length > 0 && (
+                    <div className="chat-jira-list">
+                      {uniqueJiraKeys.map(key => <JiraCard key={key} issueKey={key} />)}
+                    </div>
+                  )}
+                </div>
+                <CopyButton text={m.content} />
               </div>
-              <CopyButton text={m.content} />
+              {m.role === 'user' && <span className="chat-avatar user-avatar"><User size={14} strokeWidth={1.8} /></span>}
             </div>
-            {m.role === 'user' && <span className="chat-avatar user-avatar"><User size={14} strokeWidth={1.8} /></span>}
-          </div>
-        ))}
+          )
+        })}
         {loading && (
           <div className="chat-bubble assistant">
             <span className="chat-avatar ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>
@@ -698,6 +765,7 @@ const CHIPS = [
     '업무 수정',
     'MC 업무 현황 알려줘',
     'MS 업무 현황 알려줘',
+    '업무 목록에 없는 지라 이슈 알려줘',
   ]
 
 
