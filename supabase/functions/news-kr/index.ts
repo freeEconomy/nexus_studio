@@ -58,9 +58,9 @@ function isAiNews(title: string): boolean {
 // 국내 주요 언론사 RSS 피드
 const RSS_FEEDS = {
   ai: [
-    { name: '전자신문', url: 'https://rss.etnews.com/Section901.xml' },
-    { name: '연합뉴스 IT', url: 'https://www.yna.co.kr/rss/it.xml' },
-    { name: 'Google News AI', url: 'https://news.google.com/rss/search?q=%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5&hl=ko&gl=KR&ceid=KR:ko' },
+    { name: '전자신문', url: 'https://rss.etnews.com/Section901.xml', priority: 1 },
+    { name: '연합뉴스 IT', url: 'https://www.yna.co.kr/rss/it.xml', priority: 1 },
+    { name: 'Google News AI', url: 'https://news.google.com/rss/search?q=%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5&hl=ko&gl=KR&ceid=KR:ko', priority: 2 },
   ],
   general: [
     { name: '연합뉴스 사회', url: 'https://www.yna.co.kr/rss/society.xml' },
@@ -139,14 +139,16 @@ async function fetchFeed(feed: { name: string; url: string }, limit = 5): Promis
 // 여러 피드에서 최신 뉴스 수집 후 최대 maxItems개 반환
 // filterAi=true 이면 AI 키워드 포함 기사만 반환
 async function collectNews(
-  feeds: { name: string; url: string }[],
+  feeds: { name: string; url: string; priority?: number }[],
   maxItems = 5,
   filterAi = false,
 ): Promise<any[]> {
   // 더 많이 가져와서 필터 후 충분한 수를 확보
   const fetchLimit = filterAi ? 20 : maxItems
   const results = await Promise.allSettled(
-    feeds.map(feed => fetchFeed(feed, fetchLimit))
+    feeds.map(feed => fetchFeed(feed, fetchLimit).then(items =>
+      items.map(item => ({ ...item, _priority: feed.priority ?? 1 }))
+    ))
   )
   const all: any[] = []
 
@@ -154,14 +156,7 @@ async function collectNews(
     if (r.status === 'fulfilled') all.push(...r.value)
   }
 
-  // 날짜 기준 정렬 (최신순)
-  all.sort((a, b) => {
-    if (!a.published_date) return 1
-    if (!b.published_date) return -1
-    return new Date(b.published_date).getTime() - new Date(a.published_date).getTime()
-  })
-
-  // 중복 제거 (title 기준)
+  // 중복 제거 (title 기준) - 정렬 전에 먼저 수행
   const seen = new Set<string>()
   const deduped = all.filter(item => {
     if (seen.has(item.title)) return false
@@ -169,9 +164,21 @@ async function collectNews(
     return true
   })
 
+  // priority 1 소스 우선, 같은 priority 내에서는 최신순 정렬
+  deduped.sort((a, b) => {
+    if (a._priority !== b._priority) return a._priority - b._priority
+    if (!a.published_date) return 1
+    if (!b.published_date) return -1
+    return new Date(b.published_date).getTime() - new Date(a.published_date).getTime()
+  })
+
   if (filterAi) {
-    // AI 키워드 매칭된 기사만 표시 (보완 없음 - 관련 없는 기사 노출 방지)
-    return deduped.filter(item => isAiNews(item.title)).slice(0, maxItems)
+    const aiItems = deduped.filter(item => isAiNews(item.title))
+    // priority 1 소스로 maxItems 채우고, 부족하면 priority 2로 보완
+    const p1 = aiItems.filter(i => i._priority === 1).slice(0, maxItems)
+    if (p1.length >= maxItems) return p1
+    const p2 = aiItems.filter(i => i._priority === 2).slice(0, maxItems - p1.length)
+    return [...p1, ...p2]
   }
 
   return deduped.slice(0, maxItems)

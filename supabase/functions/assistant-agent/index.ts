@@ -389,9 +389,14 @@ Deno.serve(async (req) => {
 3. 각 업무는 반드시 하나의 섹션에만 배치 (중복 금지)
 4. 출력 형식 (반드시 준수):
 - 기획
-  - 업무제목: 내용요약
+  - [issue] [title 필드]
+    - [description 필드]
+- 디자인/퍼블
+  - [issue] [title 필드]
+    - [description 필드]
 - 개발
-  - 업무제목: 내용요약`
+  - [issue] [title 필드]
+    - [description 필드]`
 
       const reportMessages = [
         { role: 'system', content: reportSystemPrompt },

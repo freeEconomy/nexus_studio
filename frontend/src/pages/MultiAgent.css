@@ -1,8 +1,8 @@
 .multi-agent {
   max-width: 1400px;
-  margin: 0 auto;
-  padding: 64px 1.5rem 200px;
-  min-height: 100vh;
+  margin: 0px auto;
+  padding: 20px 0.5rem 20px;
+  min-height: 95vh;
   display: flex;
   flex-direction: column;
 }
