@@ -132,9 +132,9 @@ const TravelMap = ({ travelData, routeData }) => {
           >
             <Popup>
               <div style={{ minWidth: '150px' }}>
-                <strong style={{ fontSize: '14px' }}>{marker.title}</strong>
+                <strong style={{ fontSize: '16px', fontWeight: 'bold' }}>{marker.title}</strong>
                 {marker.subtitle && (
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
                     {marker.subtitle}
                   </div>
                 )}

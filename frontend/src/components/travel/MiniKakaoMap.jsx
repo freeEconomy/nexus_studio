@@ -77,7 +77,7 @@ function KakaoMiniMap({ lat, lng, name, height }) {
         const marker = new kakao.maps.Marker({ position: pos, map: mapRef.current })
         if (name) {
           const iw = new kakao.maps.InfoWindow({
-            content: `<div style="padding:4px 8px;font-size:12px;white-space:nowrap">${name}</div>`,
+            content: `<div style="padding:6px 10px;font-size:14px;font-weight:bold;white-space:nowrap;color:#f1f5f9;background:#1e293b;border:1px solid rgba(255,255,255,0.2);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${name}</div>`,
           })
           iw.open(mapRef.current, marker)
         }
