@@ -394,16 +394,17 @@ function RecCard({ rec, market }) {
         { key: 'volume',       label: '거래량',     val: rec.scoreBreakdown?.volume       },
       ]
 
-  const riskClass = rec.riskLevel === '낮음' ? 'low' : rec.riskLevel === '높음' ? 'high' : 'mid'
-
+  const riskLabel = rec.riskLevel || rec.risk
+  const riskClass = riskLabel === '낮음' || riskLabel === 'Low' ? 'low' : (riskLabel === '높음' || riskLabel === 'High' ? 'high' : 'mid')
+console.log('rec:::', rec);
   return (
     <div className="rec-card">
       <div className="rec-header">
         <div className="rec-rank">#{rec.rank}</div>
         <div className="rec-info">
           <div className="rec-ticker-row">
-            <span className="rec-ticker">{rec.ticker}</span>
             <span className="rec-name">{rec.name}</span>
+            <span className="rec-ticker">{rec.ticker}</span>
             <span className="rec-sector-tag">{rec.sector}</span>
           </div>
         </div>
@@ -422,7 +423,24 @@ function RecCard({ rec, market }) {
         ))}
       </div>
 
-      {rec.reason && <p className="rec-reason">{rec.reason}</p>}
+      {(rec.catalyst || rec.reason) && (
+        <div className="rec-catalyst-box">
+          <div className="rec-catalyst-header">
+            <span className="rec-catalyst-label">⚡ 촉매제 (Catalyst)</span>
+            {(rec.catalyst_date || rec.updatedAt) && (
+              <span className="rec-catalyst-date">{rec.catalyst_date || '진행 중'}</span>
+            )}
+          </div>
+          <p className="rec-catalyst-text">{rec.catalyst || rec.reason}</p>
+        </div>
+      )}
+
+      {(rec.entry_logic || rec.reason) && (
+        <div className="rec-logic-box">
+          <span className="rec-logic-label">💡 투자 포인트</span>
+          <p className="rec-logic-text">{rec.entry_logic || (rec.reason ? '모멘텀 및 기술적 분석 기반 진입 추천' : '')}</p>
+        </div>
+      )}
 
       {rec.keyNews?.length > 0 && (
         <div className="rec-news">
@@ -452,15 +470,20 @@ function RecCard({ rec, market }) {
               )}
             </span>
           )}
-          {rec.currentPrice != null && rec.targetPrice && <span className="rec-arrow">→</span>}
-          {rec.targetPrice && (
+          {rec.currentPrice != null && (rec.targetPrice || rec.watch_price) && <span className="rec-arrow">→</span>}
+          {(rec.targetPrice || rec.watch_price) && (
             <span className="rec-footer-price">
-              <span className="rec-price-label">목표</span>
-              <span className="rec-price-val rec-target-val">{rec.targetPrice}</span>
+              <span className="rec-price-label">{rec.targetPrice ? '목표' : '진입가'}</span>
+              <span className="rec-price-val rec-target-val">{rec.targetPrice || rec.watch_price}</span>
             </span>
           )}
         </div>
-        {rec.riskLevel && <span className={`rec-risk risk-${riskClass}`}>{rec.riskLevel}</span>}
+        {riskLabel && (
+          <div className="rec-footer-right">
+            {rec.time_horizon && <span className="rec-horizon">{rec.time_horizon}</span>}
+            <span className={`rec-risk risk-${riskClass}`}>{riskLabel}</span>
+          </div>
+        )}
       </div>
     </div>
   )
