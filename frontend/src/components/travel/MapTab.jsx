@@ -79,7 +79,7 @@ function makePopupEl(item, accentColor, onClose) {
   // 이름
   const name = document.createElement('strong')
   name.textContent = item.name
-  name.style.cssText = 'display:block;font-size:0.88rem;color:#f1f5f9;line-height:1.3;margin-bottom:3px;padding-right:8px'
+  name.style.cssText = 'display:block;font-size:1.0rem;color:#f1f5f9;line-height:1.3;margin-bottom:3px;padding-right:8px;font-weight:bold;'
   wrap.appendChild(name)
 
   // subcategory + 별점 한 줄
@@ -104,7 +104,7 @@ function makePopupEl(item, accentColor, onClose) {
     const desc = document.createElement('p')
     const t = item.description
     desc.textContent = t.length > 80 ? t.slice(0, 80) + '…' : t
-    desc.style.cssText = 'font-size:0.74rem;color:#94a3b8;margin:0 0 6px;line-height:1.45'
+    desc.style.cssText = 'font-size:0.78rem;color:#94a3b8;margin:0 0 6px;line-height:1.45'
     wrap.appendChild(desc)
   }
 
@@ -118,7 +118,7 @@ function makePopupEl(item, accentColor, onClose) {
     if (!text || text === '정보 없음') return
     const row = document.createElement('p')
     row.textContent = `${emoji} ${text}`
-    row.style.cssText = 'font-size:0.72rem;color:#cbd5e1;margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+    row.style.cssText = 'font-size:0.76rem;color:#cbd5e1;margin:0 0 3px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
     wrap.appendChild(row)
   }
 
