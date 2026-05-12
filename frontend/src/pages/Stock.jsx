@@ -9,7 +9,7 @@ const supabase = createClient(
 )
 
 // ── Constants ────────────────────────────────────────────
-const USD_KRW = 1380
+// const USD_KRW = 1380
 
 const TABS = [
   { id: 'dashboard',  label: '대시보드' },
@@ -853,6 +853,7 @@ function PortfolioTab() {
   const [chartPeriod, setChartPeriod] = useState('1M')
   const [aiData, setAiData] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [usdKrwRate, setUsdKrwRate] = useState(1380)
 
   // 종목 추가 관련 상태
   const [showAddForm, setShowAddForm] = useState(false)
@@ -870,6 +871,10 @@ function PortfolioTab() {
 
   const loadAll = async () => {
     setLoading(true)
+    try {
+      const { data: rateData } = await supabase.functions.invoke('get-exchange-rate')
+      if (rateData?.usdToKrw) setUsdKrwRate(rateData.usdToKrw)
+    } catch (e) { console.error('환율 로딩 실패', e) }
     const [{ data: pfRows }, { data: stockRows, error }] = await Promise.all([
       supabase.from('portfolios').select('*').order('id'),
       supabase.from('portfolio').select('*'),
@@ -945,10 +950,26 @@ function PortfolioTab() {
 
   const getColStats = useCallback((pfId) => {
     const col = stocks.filter(s => s.portfolio_id === pfId)
-    const usTotal = col.filter(s => s.market === 'US').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
-    const krTotal = col.filter(s => s.market === 'KR').reduce((sum, s) => sum + s.quantity * (s.currentPrice || s.avg_price), 0)
-    return { col, usTotal, krTotal, totalKRW: usTotal * USD_KRW + krTotal }
-  }, [stocks])
+    let b = 0, e = 0, usE = 0, krE = 0
+    col.forEach(s => {
+      const buy = s.quantity * s.avg_price, evalAmt = s.quantity * (s.currentPrice || s.avg_price)
+      if (s.market === 'US') { usE += evalAmt; b += buy * usdKrwRate; e += evalAmt * usdKrwRate }
+      else { krE += evalAmt; b += buy; e += evalAmt }
+    })
+    const pKRW = e - b, pPct = b > 0 ? (pKRW / b) * 100 : 0
+    return { col, usEvalTotal: usE, krEvalTotal: krE, totalKRW: e, profitKRW: pKRW, profitPct: pPct }
+  }, [stocks, usdKrwRate])
+
+  const { overallBuyKRW, overallEvalKRW, overallProfitKRW, overallProfitPct } = (function() {
+    let b = 0, e = 0
+    stocks.forEach(s => {
+      const buy = s.quantity * s.avg_price, evalAmt = s.quantity * (s.currentPrice || s.avg_price)
+      if (s.market === 'US') { b += buy * usdKrwRate; e += evalAmt * usdKrwRate }
+      else { b += buy; e += evalAmt }
+    })
+    const pKRW = e - b, pPct = b > 0 ? (pKRW / b) * 100 : 0
+    return { overallBuyKRW: b, overallEvalKRW: e, overallProfitKRW: pKRW, overallProfitPct: pPct }
+  })()
 
   const { startDate, endDate } = calcDateRange(chartPeriod)
 
@@ -965,6 +986,23 @@ function PortfolioTab() {
           </button>
         </div>
       </div>
+
+      {!loading && stocks.length > 0 && (
+        <div className="overall-summary dash-card">
+          <div className="summary-item">
+            <span>총 매입</span>
+            <strong>₩{overallBuyKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+          </div>
+          <div className="summary-item">
+            <span>총 평가</span>
+            <strong>₩{overallEvalKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
+          </div>
+          <div className={`summary-item ${overallProfitKRW >= 0 ? 'up' : 'down'}`}>
+            <span>총 손익</span>
+            <strong>{overallProfitKRW >= 0 ? '+' : ''}{overallProfitKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({overallProfitPct.toFixed(2)}%)</strong>
+          </div>
+        </div>
+      )}
 
       {showAddForm && (
         <form className="add-stock-form dash-card" onSubmit={handleAddStock}>
@@ -1029,7 +1067,7 @@ function PortfolioTab() {
       {loading && stocks.length === 0 ? <Spinner /> : (
         <div className="pf-multi-cols">
           {portfolios.map(pf => {
-            const { col, usTotal, krTotal, totalKRW } = getColStats(pf.id)
+            const { col, usEvalTotal, krEvalTotal, totalKRW, profitKRW, profitPct } = getColStats(pf.id)
             return (
               <div key={pf.id} className="pf-col">
                 <div className="pf-col-hdr">
@@ -1051,9 +1089,12 @@ function PortfolioTab() {
                   <div className="pf-col-total">
                     ₩{totalKRW.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
                   </div>
+                  <div className={`pf-col-profit ${profitKRW >= 0 ? 'up' : 'down'}`}>
+                    {profitKRW >= 0 ? '+' : ''}{profitKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({profitPct.toFixed(2)}%)
+                  </div>
                   <div className="pf-col-subs">
-                    <span>🇺🇸 ${usTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-                    <span>🇰🇷 ₩{krTotal.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
+                    <span>🇺🇸 ${usEvalTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                    <span>🇰🇷 ₩{krEvalTotal.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 </div>
                 <div className="pf-col-stocks">
@@ -1097,6 +1138,12 @@ function PortfolioTab() {
                         <span className="pfc-label">평가금액</span>
                         <span className="pfc-val pfc-eval">
                           {fmtPrice(s.quantity * (s.currentPrice || s.avg_price), s.market)}
+                        </span>
+                      </div>
+                      <div className="pfc-row">
+                        <span className="pfc-label">평가손익</span>
+                        <span className={`pfc-val ${upDown(s.changePercent)}`}>
+                          {s.market === 'US' ? '$' : '₩'}{((s.currentPrice - s.avg_price) * s.quantity).toLocaleString(undefined, { maximumFractionDigits: s.market === 'US' ? 2 : 0 })}
                         </span>
                       </div>
                     </div>
