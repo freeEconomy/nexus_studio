@@ -332,7 +332,18 @@ Deno.serve(async (req) => {
       )
       if (promptRes.ok) {
         const promptData = await promptRes.json()
-        if (promptData[0]?.system_prompt) SYSTEM_PROMPT = promptData[0].system_prompt
+        if (promptData[0]?.system_prompt) {
+          // DB 프롬프트와 지라 비교 지침을 결합
+          SYSTEM_PROMPT = promptData[0].system_prompt + "\n\n" + `
+[지라 이슈 비교 및 등록 필수 지침]
+1. 지라 이슈 조회 요청 시:
+   - 반드시 'get_tasks'와 'query_jira'를 모두 호출하세요.
+   - 두 결과를 비교하여 DB 업무의 'issue' 필드에 없는 지라 'key'만 사용자에게 보여주세요.
+2. 응답 필수 문구:
+   - 목록 하단에 반드시 "이 중 업무 리스트에 등록하고 싶은 이슈가 있으신가요? 이슈 키를 말씀해주시면 바로 등록해 드릴게요."라는 문구를 포함하세요.
+3. 등록 요청 시:
+   - 'add_task'를 호출하여 title(지라 summary), issue(지라 key), service, status('received')를 입력하세요.`;
+        }
       }
     } catch { /* DB 조회 실패 시 fallback 사용 */ }
 

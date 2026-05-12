@@ -557,8 +557,8 @@
   margin-bottom: 0.6rem;
 }
 .pfc-ticker-wrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.pfc-ticker { font-size: 1.05rem; font-weight: 900; color: #e2e8f0; letter-spacing: -0.3px; }
-.pfc-name   { font-size: 0.68rem; color: #64748b; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+.pfc-name { font-size: 1.05rem; font-weight: 900; color: #e2e8f0; letter-spacing: -0.3px; }
+.pfc-ticker   { font-size: 0.68rem; color: #64748b; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
 .pfc-emoji  { font-size: 1.1rem; }
 .pfc-price  { font-size: 1.2rem; font-weight: 800; color: #e2e8f0; letter-spacing: -0.5px; margin-bottom: 0.15rem; }
 .pfc-pct    { font-size: 0.9rem; font-weight: 700; margin-bottom: 0.75rem; }

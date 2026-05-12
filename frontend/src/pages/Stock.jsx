@@ -1067,8 +1067,8 @@ function PortfolioTab() {
                     >
                       <div className="pfc-header">
                         <div className="pfc-ticker-wrap">
-                          <span className="pfc-ticker">{s.ticker}</span>
                           {s.name && <span className="pfc-name">{s.name}</span>}
+                          <span className="pfc-ticker">{s.ticker}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                           <span className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
