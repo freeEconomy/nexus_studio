@@ -8,15 +8,13 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-// ── Constants ────────────────────────────────────────────
-// const USD_KRW = 1380
-
 const TABS = [
-  { id: 'dashboard',  label: '대시보드' },
-  { id: 'us-stocks',  label: '미국주식' },
-  { id: 'kr-stocks',  label: '국내주식' },
-  { id: 'portfolio',  label: '내 포트폴리오' },
-  { id: 'search',     label: '종목검색' },
+  { id: 'dashboard', label: '대시보드' },
+  { id: 'us-stocks', label: '미국주식' },
+  { id: 'kr-stocks', label: '국내주식' },
+  { id: 'earnings',  label: '실적발표' },
+  { id: 'portfolio', label: '내 포트폴리오' },
+  { id: 'search',    label: '종목검색' },
 ]
 
 const US_SECTORS = [
@@ -38,199 +36,156 @@ const KR_MAJOR = [
   { ticker: '035720', name: '카카오' },
 ]
 
-// ── Helpers ──────────────────────────────────────────────
+const US_NAME_MAP = {
+  NVDA:'엔비디아',AAPL:'애플',MSFT:'마이크로소프트',GOOGL:'알파벳',
+  GOOG:'알파벳',META:'메타',AMZN:'아마존',TSLA:'테슬라',
+  AVGO:'브로드컴',AMD:'AMD',INTC:'인텔',MU:'마이크론',
+  QCOM:'퀄컴',ARM:'ARM',AMAT:'어플라이드머티리얼',LRCX:'램리서치',
+  KLAC:'KLA',MRVL:'마벨테크놀로지',SMCI:'슈퍼마이크로',
+  JPM:'JP모건',BAC:'뱅크오브아메리카',GS:'골드만삭스',
+  MS:'모건스탠리',WFC:'웰스파고',C:'씨티그룹',
+  JNJ:'존슨앤존슨',PFE:'화이자',UNH:'유나이티드헬스',
+  ABBV:'애브비',MRK:'머크',XOM:'엑슨모빌',CVX:'쉐브론',COP:'코노코필립스',
+  WMT:'월마트',COST:'코스트코',TGT:'타겟',NKE:'나이키',MCD:'맥도날드',
+  NFLX:'넷플릭스',DIS:'디즈니',SPOT:'스포티파이',
+  TSM:'TSMC',ASML:'ASML',PLTR:'팔란티어',
+  SNOW:'스노우플레이크',CRM:'세일즈포스',ORCL:'오라클',SAP:'SAP',
+}
+
+/* ── helpers ── */
 const fmtPrice = (p, market) => {
   if (p == null || isNaN(p)) return 'N/A'
-  if (market === 'KR') return `₩${Number(p).toLocaleString('ko-KR')}`
-  return `$${Number(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return market === 'KR'
+    ? `₩${Number(p).toLocaleString('ko-KR')}`
+    : `$${Number(p).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 })}`
 }
-
-const fmtPct = (p) => {
+const fmtPct = p => {
   if (p == null || isNaN(p)) return 'N/A'
-  const sign = Number(p) >= 0 ? '+' : ''
-  return `${sign}${Number(p).toFixed(2)}%`
+  const s = Number(p) >= 0 ? '+' : ''
+  return `${s}${Number(p).toFixed(2)}%`
 }
-
-const upDown = (p) => (Number(p) > 0 ? 'up' : Number(p) < 0 ? 'down' : 'flat')
-
-const heatColor = (pct) => {
-  if (pct == null) return { bg: '#374151', text: '#fff' }
-  if (pct >= 3)    return { bg: '#991b1b', text: '#fff' }
-  if (pct >= 1.5)  return { bg: '#dc2626', text: '#fff' }
-  if (pct >= 0.3)  return { bg: '#f87171', text: '#fff' }
-  if (pct >= 0)    return { bg: '#fca5a5', text: '#7f1d1d' }
-  if (pct >= -0.3) return { bg: '#bfdbfe', text: '#1e3a5f' }
-  if (pct >= -1.5) return { bg: '#3b82f6', text: '#fff' }
-  if (pct >= -3)   return { bg: '#2563eb', text: '#fff' }
-  return { bg: '#1d4ed8', text: '#fff' }
+const fmtVol = v => {
+  if (v == null) return '—'
+  const n = Number(v)
+  if (n >= 1e8) return `${(n/1e8).toFixed(1)}억주`
+  if (n >= 1e4) return `${(n/1e4).toFixed(1)}만주`
+  return n.toLocaleString('ko-KR') + '주'
 }
-
-const calcDateRange = (period) => {
-  const end = new Date()
-  const start = new Date()
-  if (period === '1M') start.setMonth(start.getMonth() - 1)
-  else if (period === '3M') start.setMonth(start.getMonth() - 3)
-  else if (period === '6M') start.setMonth(start.getMonth() - 6)
-  else if (period === '1Y') start.setFullYear(start.getFullYear() - 1)
-  else if (period === '2Y') start.setFullYear(start.getFullYear() - 2)
-  return {
-    startDate: start.toISOString().split('T')[0],
-    endDate: end.toISOString().split('T')[0],
-  }
+const upDown = p => Number(p) > 0 ? 'up' : Number(p) < 0 ? 'down' : 'flat'
+const heatColor = pct => {
+  if (pct == null) return { bg:'#374151', text:'#fff' }
+  if (pct >= 3)    return { bg:'#991b1b', text:'#fff' }
+  if (pct >= 1.5)  return { bg:'#dc2626', text:'#fff' }
+  if (pct >= 0.3)  return { bg:'#f87171', text:'#fff' }
+  if (pct >= 0)    return { bg:'#fca5a5', text:'#7f1d1d' }
+  if (pct >= -0.3) return { bg:'#bfdbfe', text:'#1e3a5f' }
+  if (pct >= -1.5) return { bg:'#3b82f6', text:'#fff' }
+  if (pct >= -3)   return { bg:'#2563eb', text:'#fff' }
+  return { bg:'#1d4ed8', text:'#fff' }
 }
+const calcDateRange = period => {
+  const end = new Date(), start = new Date()
+  if (period === '1M') start.setMonth(start.getMonth()-1)
+  else if (period === '3M') start.setMonth(start.getMonth()-3)
+  else if (period === '6M') start.setMonth(start.getMonth()-6)
+  else if (period === '1Y') start.setFullYear(start.getFullYear()-1)
+  else if (period === '2Y') start.setFullYear(start.getFullYear()-2)
+  return { startDate: start.toISOString().split('T')[0], endDate: end.toISOString().split('T')[0] }
+}
+const toDateStr = ts => new Date(ts*1000).toISOString().split('T')[0]
 
-const toDateStr = (ts) => new Date(ts * 1000).toISOString().split('T')[0]
-
-// ── Reusable Chart Widget ────────────────────────────────
-function ChartWidget({ ticker, market, height = 300, type = 'candlestick', startDate, endDate }) {
-  const containerRef = useRef(null)
-  const [chartError, setChartError] = useState(null)
-  const [chartEmpty, setChartEmpty] = useState(false)
-
+/* ── ChartWidget ── */
+function ChartWidget({ ticker, market, height=300, type='candlestick', startDate, endDate }) {
+  const ref = useRef(null)
+  const [err, setErr] = useState(null)
+  const [empty, setEmpty] = useState(false)
   useEffect(() => {
-    if (!containerRef.current || !ticker) return
-    let destroyed = false
-    setChartError(null)
-    setChartEmpty(false)
-
-    const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth || 600,
-      height,
-      layout: {
-        background: { type: 'solid', color: '#ffffff' },
-        textColor: '#64748b',
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: '#f1f5f9' },
-        horzLines: { color: '#f1f5f9' },
-      },
-      rightPriceScale: { borderColor: '#e2e8f0' },
-      timeScale: { borderColor: '#e2e8f0', timeVisible: true, secondsVisible: false },
-      crosshair: { mode: 1 },
+    if (!ref.current || !ticker) return
+    let dead = false; setErr(null); setEmpty(false)
+    const chart = createChart(ref.current, {
+      width: ref.current.clientWidth || 600, height,
+      layout:{ background:{type:'solid',color:'#ffffff'}, textColor:'#64748b', fontSize:11 },
+      grid:{ vertLines:{color:'#f1f5f9'}, horzLines:{color:'#f1f5f9'} },
+      rightPriceScale:{borderColor:'#e2e8f0'},
+      timeScale:{borderColor:'#e2e8f0', timeVisible:true, secondsVisible:false},
+      crosshair:{mode:1},
     })
-
-    let series
-    if (type === 'area') {
-      series = chart.addAreaSeries({
-        lineColor: '#2563eb',
-        topColor: 'rgba(37,99,235,0.22)',
-        bottomColor: 'rgba(37,99,235,0)',
-        lineWidth: 2,
-      })
-    } else {
-      series = chart.addCandlestickSeries({
-        upColor: '#dc2626',
-        downColor: '#2563eb',
-        borderUpColor: '#dc2626',
-        borderDownColor: '#2563eb',
-        wickUpColor: '#dc2626',
-        wickDownColor: '#2563eb',
-      })
-    }
-
+    const series = type === 'area'
+      ? chart.addAreaSeries({ lineColor:'#2563eb', topColor:'rgba(37,99,235,0.22)', bottomColor:'rgba(37,99,235,0)', lineWidth:2 })
+      : chart.addCandlestickSeries({ upColor:'#dc2626', downColor:'#2563eb', borderUpColor:'#dc2626', borderDownColor:'#2563eb', wickUpColor:'#dc2626', wickDownColor:'#2563eb' })
     const fn = market === 'US' ? 'stock-us-chart' : 'stock-kr-chart'
-    supabase.functions
-      .invoke(fn, { body: { ticker, period: 'D', startDate: startDate || '', endDate: endDate || '' } })
+    supabase.functions.invoke(fn, { body:{ ticker, period:'D', startDate:startDate||'', endDate:endDate||'' } })
       .then(({ data, error }) => {
-        if (destroyed) return
-        if (error) { setChartError(error.message || '차트 로딩 실패'); return }
-        if (data?.error) { setChartError(data.error); return }
-        if (!Array.isArray(data) || data.length === 0) { setChartEmpty(true); return }
+        if (dead) return
+        if (error) { setErr(error.message||'차트 로딩 실패'); return }
+        if (data?.error) { setErr(data.error); return }
+        if (!Array.isArray(data)||data.length===0) { setEmpty(true); return }
         const seen = new Set()
         const mapped = data
           .filter(d => d.time && d.close != null)
           .map(d => {
-            const t = typeof d.time === 'number' ? toDateStr(d.time) : d.time
-            return type === 'area'
-              ? { time: t, value: d.close }
-              : { time: t, open: d.open, high: d.high, low: d.low, close: d.close }
+            const t = typeof d.time==='number' ? toDateStr(d.time) : d.time
+            return type==='area' ? {time:t,value:d.close} : {time:t,open:d.open,high:d.high,low:d.low,close:d.close}
           })
-          .filter(d => { if (seen.has(d.time)) return false; seen.add(d.time); return true })
-          .sort((a, b) => (a.time > b.time ? 1 : -1))
-        if (mapped.length > 0) {
-          series.setData(mapped)
-          chart.timeScale().fitContent()
-        } else {
-          setChartEmpty(true)
-        }
+          .filter(d => { if(seen.has(d.time))return false; seen.add(d.time); return true })
+          .sort((a,b) => a.time>b.time?1:-1)
+        if (mapped.length > 0) { series.setData(mapped); chart.timeScale().fitContent() }
+        else setEmpty(true)
       })
-      .catch(e => { if (!destroyed) setChartError(e.message) })
-
+      .catch(e => { if(!dead) setErr(e.message) })
     const ro = new ResizeObserver(entries => {
-      if (destroyed) return
-      const w = entries[0]?.contentRect?.width
-      if (w) chart.applyOptions({ width: w })
+      if (!dead) { const w = entries[0]?.contentRect?.width; if(w) chart.applyOptions({width:w}) }
     })
-    ro.observe(containerRef.current)
-
-    return () => {
-      destroyed = true
-      ro.disconnect()
-      chart.remove()
-    }
+    ro.observe(ref.current)
+    return () => { dead=true; ro.disconnect(); chart.remove() }
   }, [ticker, market, startDate, endDate, type, height])
-
-  if (chartError) return (
-    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: 13 }}>
-      차트 오류: {chartError}
-    </div>
-  )
-  if (chartEmpty) return (
-    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>
-      차트 데이터 없음
-    </div>
-  )
-  return <div ref={containerRef} style={{ width: '100%', minHeight: height }} />
+  if (err) return <div style={{height,display:'flex',alignItems:'center',justifyContent:'center',color:'#ef4444',fontSize:13}}>차트 오류: {err}</div>
+  if (empty) return <div style={{height,display:'flex',alignItems:'center',justifyContent:'center',color:'#94a3b8',fontSize:13}}>차트 데이터 없음</div>
+  return <div ref={ref} style={{width:'100%',minHeight:height}} />
 }
 
-// ── Spinner ──────────────────────────────────────────────
 function Spinner() {
-  return (
-    <div className="spinner">
-      <div className="spin-ring" />
-    </div>
-  )
+  return <div className="spinner"><div className="spin-ring"/></div>
 }
-
-// ── Period Buttons ───────────────────────────────────────
-function PeriodBtns({ value, onChange, options = ['1M', '3M', '6M', '1Y'] }) {
+function PeriodBtns({ value, onChange, options=['1M','3M','6M','1Y'] }) {
   return (
     <div className="period-btns">
-      {options.map(p => (
-        <button
-          key={p}
-          className={`period-btn ${value === p ? 'active' : ''}`}
-          onClick={() => onChange(p)}
-        >{p}</button>
-      ))}
+      {options.map(p => <button key={p} className={`period-btn ${value===p?'active':''}`} onClick={()=>onChange(p)}>{p}</button>)}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  MAIN STOCK PAGE
-// ═══════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════
+   MAIN STOCK PAGE
+══════════════════════════════════════════════ */
 export default function Stock() {
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [pendingStock, setPendingStock] = useState(null)
+
+  const openDetail = useCallback(stock => {
+    setPendingStock(stock)
+    setActiveTab('search')
+  }, [])
+
+  const handleTabClick = id => {
+    if (id !== 'search') setPendingStock(null)
+    setActiveTab(id)
+  }
 
   const content = {
-    dashboard: <DashboardTab />,
-    'us-stocks': <USStocksTab />,
-    'kr-stocks': <KRStocksTab />,
-    portfolio: <PortfolioTab />,
-    search: <SearchTab />,
+    dashboard:   <DashboardTab onSelectStock={openDetail} />,
+    'us-stocks': <USStocksTab onSelectStock={openDetail} />,
+    'kr-stocks': <KRStocksTab onSelectStock={openDetail} />,
+    earnings:    <EarningsTab  onSelectStock={openDetail} />,
+    portfolio:   <PortfolioTab onSelectStock={openDetail} />,
+    search:      <SearchTab pendingStock={pendingStock} onClearPending={()=>setPendingStock(null)} />,
   }
 
   return (
     <div className="stock-page">
       <nav className="stock-nav">
         {TABS.map(t => (
-          <button
-            key={t.id}
-            className={`snav-btn ${activeTab === t.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(t.id)}
-          >
+          <button key={t.id} className={`snav-btn ${activeTab===t.id?'active':''}`} onClick={()=>handleTabClick(t.id)}>
             {t.label}
           </button>
         ))}
@@ -240,163 +195,109 @@ export default function Stock() {
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  DASHBOARD TAB
-// ═══════════════════════════════════════════════════════
-function DashboardTab() {
+/* ══════════════════════════════════════════════
+   DASHBOARD TAB
+══════════════════════════════════════════════ */
+function DashboardTab({ onSelectStock }) {
   const [indices, setIndices] = useState([])
   const [portfolio, setPortfolio] = useState([])
   const [news, setNews] = useState('')
   const [loading, setLoading] = useState(true)
   const [chartPeriod, setChartPeriod] = useState('1M')
 
-  useEffect(() => {
-    load()
-  }, [])
+  useEffect(() => { load() }, [])
 
   const load = async () => {
     setLoading(true)
     const [usIdx, krIdx, pfRes, newsRes] = await Promise.allSettled([
-      supabase.functions.invoke('stock-us-index', { body: {} }),
-      supabase.functions.invoke('stock-kr-index', { body: {} }),
+      supabase.functions.invoke('stock-us-index', { body:{} }),
+      supabase.functions.invoke('stock-kr-index', { body:{} }),
       supabase.from('portfolio').select('*').limit(8),
-      supabase.functions.invoke('query-tavily', {
-        body: {
-          query: 'global stock market major news today S&P500 NASDAQ',
-          summarize: true,
-          lang: 'ko',
-        },
-      }),
+      supabase.functions.invoke('query-tavily', { body:{ query:'global stock market major news today S&P500 NASDAQ', summarize:true, lang:'ko' } }),
     ])
-
-    const usData = usIdx.status === 'fulfilled' ? (usIdx.value.data || []) : []
-    const krData = krIdx.status === 'fulfilled' ? (krIdx.value.data || []) : []
-    setIndices([...usData, ...krData])
-
-    if (pfRes.status === 'fulfilled' && !pfRes.value.error) {
-      const rows = pfRes.value.data || []
-      const withPx = await Promise.allSettled(
-        rows.map(async s => {
-          const fn = s.market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
-          const { data: q } = await supabase.functions.invoke(fn, { body: { ticker: s.ticker } })
-          const price = s.market === 'US' ? q?.c : q?.price
-          const pct = price ? ((price - s.avg_price) / s.avg_price * 100) : 0
-          return { ...s, currentPrice: price, changePercent: pct }
-        })
-      )
-      setPortfolio(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
+    const usData = usIdx.status==='fulfilled' ? (usIdx.value.data||[]) : []
+    const krData = krIdx.status==='fulfilled' ? (krIdx.value.data||[]) : []
+    setIndices([...usData,...krData])
+    if (pfRes.status==='fulfilled' && !pfRes.value.error) {
+      const rows = pfRes.value.data||[]
+      const withPx = await Promise.allSettled(rows.map(async s => {
+        const fn = s.market==='US' ? 'stock-us-quote' : 'stock-kr-quote'
+        const { data:q } = await supabase.functions.invoke(fn, { body:{ticker:s.ticker} })
+        const price = s.market==='US' ? q?.c : q?.price
+        const pct = price ? ((price-s.avg_price)/s.avg_price*100) : 0
+        return { ...s, currentPrice:price, changePercent:pct }
+      }))
+      setPortfolio(withPx.filter(r=>r.status==='fulfilled').map(r=>r.value))
     }
-
-    if (newsRes.status === 'fulfilled') {
-      setNews(newsRes.value.data?.result || '')
-    }
+    if (newsRes.status==='fulfilled') setNews(newsRes.value.data?.result||'')
     setLoading(false)
   }
 
   const { startDate, endDate } = calcDateRange(chartPeriod)
-
   return (
     <div className="dash-tab">
       <div className="dash-header">
         <h1 className="dash-title">Markets</h1>
-        <span className="dash-time">
-          {new Date().toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-        </span>
+        <span className="dash-time">{new Date().toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
       </div>
-
-      {loading ? <Spinner /> : (
-        <>
-          {/* Index cards */}
-          <div className="idx-grid">
-            {indices.map((idx, i) => {
-              const pct = parseFloat(idx.change)
-              const val = typeof idx.value === 'number'
-                ? idx.value.toLocaleString('en-US', { maximumFractionDigits: 2 })
-                : idx.value
-              return (
-                <div key={i} className={`idx-card ${upDown(pct)}`}>
-                  <span className="idx-name">{idx.name}</span>
-                  <span className="idx-value">{val}</span>
-                  <span className="idx-change">{fmtPct(pct)} {pct >= 0 ? '▲' : '▼'}</span>
-                </div>
-              )
-            })}
+      {loading ? <Spinner /> : <>
+        <div className="idx-grid">
+          {indices.map((idx,i) => {
+            const pct = parseFloat(idx.change)
+            const val = typeof idx.value==='number' ? idx.value.toLocaleString('en-US',{maximumFractionDigits:2}) : idx.value
+            return (
+              <div key={i} className={`idx-card ${upDown(pct)}`}>
+                <span className="idx-name">{idx.name}</span>
+                <span className="idx-value">{val}</span>
+                <span className="idx-change">{fmtPct(pct)} {pct>=0?'▲':'▼'}</span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="dash-card">
+          <div className="card-header">
+            <h3 className="card-title">S&P 500 (SPY) 시장 추이</h3>
+            <PeriodBtns value={chartPeriod} onChange={setChartPeriod} />
           </div>
-
-          {/* Market chart */}
+          <ChartWidget key={`spy-${chartPeriod}`} ticker="SPY" market="US" height={240} type="area" startDate={startDate} endDate={endDate} />
+        </div>
+        <div className="dash-row2">
           <div className="dash-card">
-            <div className="card-header">
-              <h3 className="card-title">S&amp;P 500 (SPY) 시장 추이</h3>
-              <PeriodBtns value={chartPeriod} onChange={setChartPeriod} />
-            </div>
-            <ChartWidget
-              key={`spy-${chartPeriod}`}
-              ticker="SPY"
-              market="US"
-              height={240}
-              type="area"
-              startDate={startDate}
-              endDate={endDate}
-            />
-          </div>
-
-          {/* Bottom row */}
-          <div className="dash-row2">
-            <div className="dash-card">
-              <h3 className="card-title">보유종목 요약</h3>
-              <div className="pf-mini-list">
-                {portfolio.length === 0 ? (
-                  <p className="empty-msg">포트폴리오 데이터가 없습니다</p>
-                ) : portfolio.map((s, i) => (
-                  <div key={i} className={`pf-mini-item ${upDown(s.changePercent)}`}>
-                    <span className="pf-mini-ticker">{s.name || s.ticker}</span>
-                    <span className="pf-mini-mkt">{s.market}</span>
-                    <span className={`pf-mini-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
-                    <span className="pf-mini-arrow">{s.changePercent >= 0 ? '▲' : '▼'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="dash-card">
-              <h3 className="card-title">오늘의 뉴스 (AI 요약)</h3>
-              <div className="news-body">
-                {news
-                  ? news.split('\n').filter(l => l.trim()).map((l, i) => (
-                    <p key={i} className="news-line">{l}</p>
-                  ))
-                  : <p className="empty-msg">뉴스 로딩 중...</p>
-                }
-              </div>
+            <h3 className="card-title">보유종목 요약</h3>
+            <div className="pf-mini-list">
+              {portfolio.length===0 ? <p className="empty-msg">포트폴리오 데이터가 없습니다</p>
+              : portfolio.map((s,i) => (
+                <div key={i} className={`pf-mini-item ${upDown(s.changePercent)}`} style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:s.name||s.ticker,market:s.market})}>
+                  <span className="pf-mini-ticker">{s.name||s.ticker}</span>
+                  <span className="pf-mini-mkt">{s.market}</span>
+                  <span className={`pf-mini-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
+                  <span className="pf-mini-arrow">{s.changePercent>=0?'▲':'▼'}</span>
+                </div>
+              ))}
             </div>
           </div>
-        </>
-      )}
+          <div className="dash-card">
+            <h3 className="card-title">오늘의 뉴스 (AI 요약)</h3>
+            <div className="news-body">
+              {news ? news.split('\n').filter(l=>l.trim()).map((l,i)=><p key={i} className="news-line">{l}</p>)
+              : <p className="empty-msg">뉴스 로딩 중...</p>}
+            </div>
+          </div>
+        </div>
+      </>}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  RECOMMENDED STOCKS SECTION  (US & KR 공통)
-// ═══════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════
+   RECOMMENDED STOCKS SECTION
+══════════════════════════════════════════════ */
 function RecCard({ rec, market }) {
-  const scores = market === 'US'
-    ? [
-        { key: 'momentum',  label: '모멘텀',    val: rec.scoreBreakdown?.momentum  },
-        { key: 'sentiment', label: '뉴스감성',  val: rec.scoreBreakdown?.sentiment },
-        { key: 'technical', label: '기술지표',  val: rec.scoreBreakdown?.technical },
-        { key: 'volume',    label: '거래량',    val: rec.scoreBreakdown?.volume    },
-      ]
-    : [
-        { key: 'momentum',     label: '모멘텀',     val: rec.scoreBreakdown?.momentum     },
-        { key: 'institutional',label: '외국인/기관', val: rec.scoreBreakdown?.institutional},
-        { key: 'technical',    label: '기술지표',   val: rec.scoreBreakdown?.technical    },
-        { key: 'volume',       label: '거래량',     val: rec.scoreBreakdown?.volume       },
-      ]
-
-  const riskLabel = rec.riskLevel || rec.risk
-  const riskClass = riskLabel === '낮음' || riskLabel === 'Low' ? 'low' : (riskLabel === '높음' || riskLabel === 'High' ? 'high' : 'mid')
-console.log('rec:::', rec);
+  const scores = market==='US'
+    ? [{key:'momentum',label:'모멘텀',val:rec.scoreBreakdown?.momentum},{key:'sentiment',label:'뉴스감성',val:rec.scoreBreakdown?.sentiment},{key:'technical',label:'기술지표',val:rec.scoreBreakdown?.technical},{key:'volume',label:'거래량',val:rec.scoreBreakdown?.volume}]
+    : [{key:'momentum',label:'모멘텀',val:rec.scoreBreakdown?.momentum},{key:'institutional',label:'외국인/기관',val:rec.scoreBreakdown?.institutional},{key:'technical',label:'기술지표',val:rec.scoreBreakdown?.technical},{key:'volume',label:'거래량',val:rec.scoreBreakdown?.volume}]
+  const riskLabel = rec.riskLevel||rec.risk
+  const riskClass = riskLabel==='낮음'||riskLabel==='Low'?'low':riskLabel==='높음'||riskLabel==='High'?'high':'mid'
   return (
     <div className="rec-card">
       <div className="rec-header">
@@ -410,77 +311,57 @@ console.log('rec:::', rec);
         </div>
         <div className="rec-score-badge">{rec.compositeScore}점</div>
       </div>
-
       <div className="rec-scores">
-        {scores.map(s => (
+        {scores.map(s=>(
           <div key={s.key} className="rec-score-row">
             <span className="rec-score-label">{s.label}</span>
-            <div className="rec-score-bar-track">
-              <div className="rec-score-bar-fill" style={{ width: `${s.val ?? 50}%` }} />
-            </div>
-            <span className="rec-score-val">{s.val ?? '—'}</span>
+            <div className="rec-score-bar-track"><div className="rec-score-bar-fill" style={{width:`${s.val??50}%`}}/></div>
+            <span className="rec-score-val">{s.val??'—'}</span>
           </div>
         ))}
       </div>
-
-      {(rec.catalyst || rec.reason) && (
+      {(rec.catalyst||rec.reason) && (
         <div className="rec-catalyst-box">
           <div className="rec-catalyst-header">
-            <span className="rec-catalyst-label">⚡ 촉매제 (Catalyst)</span>
-            {(rec.catalyst_date || rec.updatedAt) && (
-              <span className="rec-catalyst-date">{rec.catalyst_date || '진행 중'}</span>
-            )}
+            <span className="rec-catalyst-label">⚡ Catalyst</span>
+            {(rec.catalyst_date||rec.updatedAt) && <span className="rec-catalyst-date">{rec.catalyst_date||'진행 중'}</span>}
           </div>
-          <p className="rec-catalyst-text">{rec.catalyst || rec.reason}</p>
+          <p className="rec-catalyst-text">{rec.catalyst||rec.reason}</p>
         </div>
       )}
-
-      {(rec.entry_logic || rec.reason) && (
+      {(rec.entry_logic||rec.reason) && (
         <div className="rec-logic-box">
           <span className="rec-logic-label">💡 투자 포인트</span>
-          <p className="rec-logic-text">{rec.entry_logic || (rec.reason ? '모멘텀 및 기술적 분석 기반 진입 추천' : '')}</p>
+          <p className="rec-logic-text">{rec.entry_logic||'모멘텀 및 기술적 분석 기반 진입 추천'}</p>
         </div>
       )}
-
-      {rec.keyNews?.length > 0 && (
+      {rec.keyNews?.length>0 && (
         <div className="rec-news">
-          {rec.keyNews.slice(0, 2).map((n, i) => (
-            <div key={i} className="rec-news-item">
-              <span className="rec-news-icon">📰</span>
-              <span className="rec-news-text">{n}</span>
-            </div>
+          {rec.keyNews.slice(0,2).map((n,i)=>(
+            <div key={i} className="rec-news-item"><span className="rec-news-icon">📰</span><span className="rec-news-text">{n}</span></div>
           ))}
         </div>
       )}
-
       <div className="rec-footer">
         <div className="rec-prices">
-          {rec.currentPrice != null && (
+          {rec.currentPrice!=null && (
             <span className="rec-footer-price">
               <span className="rec-price-label">현재</span>
-              <span className="rec-price-val">
-                {market === 'US'
-                  ? `$${Number(rec.currentPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : `₩${Number(rec.currentPrice).toLocaleString('ko-KR')}`}
-              </span>
-              {rec.changePercent != null && (
-                <span className={`rec-change-pct ${upDown(rec.changePercent)}`}>
-                  {fmtPct(rec.changePercent)}{Number(rec.changePercent) >= 0 ? '▲' : '▼'}
-                </span>
-              )}
+              <span className="rec-price-val">{market==='US'?`$${Number(rec.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`:`₩${Number(rec.currentPrice).toLocaleString('ko-KR')}`}</span>
+              {rec.changePercent!=null && <span className={`rec-change-pct ${upDown(rec.changePercent)}`}>{fmtPct(rec.changePercent)}{Number(rec.changePercent)>=0?'▲':'▼'}</span>}
             </span>
           )}
-          {rec.currentPrice != null && (rec.targetPrice || rec.watch_price) && <span className="rec-arrow">→</span>}
-          {(rec.targetPrice || rec.watch_price) && (
+          {rec.currentPrice!=null&&(rec.targetPrice||rec.watch_price)&&<span className="rec-arrow">→</span>}
+          {(rec.targetPrice||rec.watch_price) && (
             <span className="rec-footer-price">
-              <span className="rec-price-label">{rec.targetPrice ? '목표' : '진입가'}</span>
-              <span className="rec-price-val rec-target-val">{rec.targetPrice || rec.watch_price}</span>
+              <span className="rec-price-label">{rec.targetPrice?'목표':'진입가'}</span>
+              <span className="rec-price-val rec-target-val">{rec.targetPrice||rec.watch_price}</span>
             </span>
           )}
         </div>
         {riskLabel && (
           <div className="rec-footer-right">
-            {rec.time_horizon && <span className="rec-horizon">{rec.time_horizon}</span>}
+            {rec.time_horizon&&<span className="rec-horizon">{rec.time_horizon}</span>}
             <span className={`rec-risk risk-${riskClass}`}>{riskLabel}</span>
           </div>
         )}
@@ -490,485 +371,655 @@ console.log('rec:::', rec);
 }
 
 function RecommendedStocksSection({ market }) {
-  const [data, setData]       = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
-
-  useEffect(() => { loadRecs() }, [market])
-
+  const [data, setData]     = useState(null)
+  const [loading,setLoading]= useState(false)
+  const [error, setError]   = useState(null)
+  useEffect(()=>{ loadRecs() },[market])
   const loadRecs = async () => {
-    setLoading(true)
-    setError(null)
-    const { data: result, error: err } = await supabase.functions.invoke('stock-recommendations', {
-      body: { market },
-    })
-    if (err) setError(err.message || '추천 로딩 실패')
+    setLoading(true); setError(null)
+    const { data:result, error:err } = await supabase.functions.invoke('stock-recommendations',{ body:{market} })
+    if (err) setError(err.message||'추천 로딩 실패')
     else setData(result)
     setLoading(false)
   }
-
-  const updatedTime = data?.updatedAt
-    ? new Date(data.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-    : null
-
+  const updatedTime = data?.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : null
   return (
     <div className="dash-card rec-section">
       <div className="rec-title-row">
         <h3 className="card-title">🎯 오늘의 추천종목 TOP 10</h3>
         <div className="rec-header-right">
-          {updatedTime && <span className="rec-updated">업데이트 {updatedTime}</span>}
-          <button className="rec-refresh-btn" onClick={loadRecs} disabled={loading}>
-            {loading ? '분석 중...' : '새로고침'}
-          </button>
+          {updatedTime&&<span className="rec-updated">업데이트 {updatedTime}</span>}
+          <button className="rec-refresh-btn" onClick={loadRecs} disabled={loading}>{loading?'분석 중...':'새로고침'}</button>
         </div>
       </div>
-
-      {data?.marketSummary && (
-        <p className="rec-market-summary">{data.marketSummary}</p>
-      )}
-
-      {data?.hotSectors?.length > 0 && (
+      {data?.marketSummary&&<p className="rec-market-summary">{data.marketSummary}</p>}
+      {data?.hotSectors?.length>0&&(
         <div className="rec-sectors">
           <span className="rec-sectors-label">핫 섹터</span>
-          {data.hotSectors.map((s, i) => (
-            <span key={i} className="rec-sector-chip">{s}</span>
-          ))}
+          {data.hotSectors.map((s,i)=><span key={i} className="rec-sector-chip">{s}</span>)}
         </div>
       )}
-
-      {loading && !data && <Spinner />}
-      {loading &&  data && <p className="rec-refreshing">분석 중...</p>}
-      {error   && <p className="rec-error">{error}</p>}
-
-      {data?.recommendations?.length > 0 && (
+      {loading&&!data&&<Spinner />}
+      {loading&&data&&<p className="rec-refreshing">분석 중...</p>}
+      {error&&<p className="rec-error">{error}</p>}
+      {data?.recommendations?.length>0&&(
         <div className="rec-cards-list">
-          {data.recommendations.map((rec, i) => (
-            <RecCard key={i} rec={rec} market={market} />
-          ))}
+          {data.recommendations.map((rec,i)=><RecCard key={i} rec={rec} market={market} />)}
         </div>
       )}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  US STOCKS TAB
-// ═══════════════════════════════════════════════════════
-function USStocksTab() {
+/* ══════════════════════════════════════════════
+   US STOCKS TAB
+══════════════════════════════════════════════ */
+function USStocksTab({ onSelectStock }) {
   const [sectors, setSectors] = useState([])
   const [allStocks, setAllStocks] = useState([])
   const [news, setNews] = useState([])
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    load()
-  }, [])
-
+  useEffect(()=>{load()},[])
   const load = async () => {
     setLoading(true)
-    const allTickers = US_SECTORS.flatMap(s => s.tickers)
-
-    const quoteResults = await Promise.allSettled(
-      allTickers.map(ticker =>
-        supabase.functions.invoke('stock-us-quote', { body: { ticker } }).then(r => ({ ticker, ...r.data }))
-      )
-    )
-
+    const allTickers = US_SECTORS.flatMap(s=>s.tickers)
+    const quoteResults = await Promise.allSettled(allTickers.map(ticker=>supabase.functions.invoke('stock-us-quote',{body:{ticker}}).then(r=>({ticker,...r.data}))))
     const priceMap = {}
-    quoteResults.forEach(r => {
-      if (r.status === 'fulfilled' && r.value.ticker) {
-        priceMap[r.value.ticker] = r.value
-      }
-    })
-
-    const sectorData = US_SECTORS.map(sec => {
-      const stocks = sec.tickers.map(t => priceMap[t]).filter(Boolean)
-      const avgDp = stocks.length > 0
-        ? stocks.reduce((s, q) => s + (q.dp || 0), 0) / stocks.length
-        : null
-      return { ...sec, avgDp, stocks: sec.tickers.map(t => ({ ticker: t, ...priceMap[t] })) }
+    quoteResults.forEach(r=>{ if(r.status==='fulfilled'&&r.value.ticker) priceMap[r.value.ticker]=r.value })
+    const sectorData = US_SECTORS.map(sec=>{
+      const stocks = sec.tickers.map(t=>priceMap[t]).filter(Boolean)
+      const avgDp = stocks.length>0 ? stocks.reduce((s,q)=>s+(q.dp||0),0)/stocks.length : null
+      return { ...sec, avgDp, stocks:sec.tickers.map(t=>({ticker:t,...priceMap[t]})) }
     })
     setSectors(sectorData)
-
-    const flat = Object.values(priceMap)
-    setAllStocks(flat)
-
-    // News from Finnhub + Translate
-    const { data: newsData } = await supabase.functions.invoke('stock-us-news', { body: { ticker: 'AAPL' } })
-    const rawNews = newsData?.news?.slice(0, 8) || []
-    
-    // Translate headlines to Korean
-    const translatedNews = await Promise.allSettled(
-      rawNews.map(async item => {
-        try {
-          const { data: trans } = await supabase.functions.invoke('query-tavily', {
-            body: {
-              query: `Translate this English news headline to Korean: ${item.headline}`,
-              summarize: true,
-              lang: 'ko',
-            }
-          })
-          return { ...item, headlineKr: trans?.result || item.headline }
-        } catch {
-          return { ...item, headlineKr: item.headline }
-        }
-      })
-    )
-    
-    setNews(translatedNews.filter(r => r.status === 'fulfilled').map(r => r.value))
+    setAllStocks(Object.values(priceMap))
+    const { data:newsData } = await supabase.functions.invoke('stock-us-news',{body:{ticker:'AAPL'}})
+    setNews(newsData?.news?.slice(0,8)||[])
     setLoading(false)
   }
-
-  const gainers = [...allStocks].sort((a, b) => (b.dp || 0) - (a.dp || 0)).slice(0, 5)
-  const losers  = [...allStocks].sort((a, b) => (a.dp || 0) - (b.dp || 0)).slice(0, 5)
-
+  const gainers = [...allStocks].sort((a,b)=>(b.dp||0)-(a.dp||0)).slice(0,5)
+  const losers  = [...allStocks].sort((a,b)=>(a.dp||0)-(b.dp||0)).slice(0,5)
   return (
     <div className="us-tab">
       <h2 className="tab-title">US Markets</h2>
-      {loading ? <Spinner /> : (
-        <>
-          {/* Sector Heatmap */}
-          <div className="dash-card">
-            <h3 className="card-title">섹터별 히트맵</h3>
-            <div className="heatmap-grid">
-              {sectors.map(sec => {
-                const { bg, text } = heatColor(sec.avgDp)
-                return (
-                  <div key={sec.name} className="heat-card" style={{ background: bg, color: text }}>
-                    <div className="heat-sector">{sec.name}</div>
-                    <div className="heat-pct">{sec.avgDp != null ? fmtPct(sec.avgDp) : '—'}</div>
-                    <div className="heat-tickers">
-                      {sec.stocks.map(s => (
-                        <span key={s.ticker} className="heat-tick">
-                          {s.ticker} <small>{s.dp != null ? fmtPct(s.dp) : ''}</small>
-                        </span>
-                      ))}
-                    </div>
+      {loading ? <Spinner /> : <>
+        <div className="dash-card">
+          <h3 className="card-title">섹터별 히트맵</h3>
+          <div className="heatmap-grid">
+            {sectors.map(sec=>{
+              const {bg,text}=heatColor(sec.avgDp)
+              return (
+                <div key={sec.name} className="heat-card" style={{background:bg,color:text}}>
+                  <div className="heat-sector">{sec.name}</div>
+                  <div className="heat-pct">{sec.avgDp!=null?fmtPct(sec.avgDp):'—'}</div>
+                  <div className="heat-tickers">
+                    {sec.stocks.map(s=>(
+                      <span key={s.ticker} className="heat-tick" style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:US_NAME_MAP[s.ticker]||s.ticker,market:'US'})}>
+                        {s.ticker} <small>{s.dp!=null?fmtPct(s.dp):''}</small>
+                      </span>
+                    ))}
                   </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Gainers / Losers */}
-          <div className="gl-grid">
-            <div className="dash-card">
-              <h3 className="card-title" style={{ color: '#dc2626' }}>급등 TOP 5 ▲</h3>
-              {gainers.map(s => (
-                <div key={s.ticker} className="gl-row">
-                  <span className="gl-ticker">{s.ticker}</span>
-                  <span className="gl-price">${s.c?.toFixed(2) ?? '—'}</span>
-                  <span className="gl-pct up">{fmtPct(s.dp)}</span>
                 </div>
-              ))}
-            </div>
-            <div className="dash-card">
-              <h3 className="card-title" style={{ color: '#2563eb' }}>급락 TOP 5 ▼</h3>
-              {losers.map(s => (
-                <div key={s.ticker} className="gl-row">
-                  <span className="gl-ticker">{s.ticker}</span>
-                  <span className="gl-price">${s.c?.toFixed(2) ?? '—'}</span>
-                  <span className="gl-pct down">{fmtPct(s.dp)}</span>
-                </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
-
-          {/* News Feed */}
+        </div>
+        <div className="gl-grid">
           <div className="dash-card">
-            <h3 className="card-title">Finnhub 실시간 뉴스</h3>
-            <div className="news-feed">
-              {news.length === 0
-                ? <p className="empty-msg">뉴스를 불러올 수 없습니다</p>
-                : news.map((item, i) => {
-                  const dt = new Date(item.datetime * 1000)
-                  const bullish = item.sentiment?.bullishPercent
-                  const sentiment = bullish == null ? null : bullish > 0.6 ? 'positive' : bullish < 0.4 ? 'negative' : 'neutral'
-                  return (
-                    <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="news-item">
-                      <div className="news-meta">
-                        <span className="news-source">{item.source}</span>
-                        <span className="news-dt">{dt.toLocaleDateString('ko-KR')}</span>
-                        {sentiment && (
-                          <span className={`sentiment-badge ${sentiment}`}>
-                            {sentiment === 'positive' ? '긍정' : sentiment === 'negative' ? '부정' : '중립'}
-                          </span>
-                        )}
-                      </div>
-                      <p className="news-headline">{item.headlineKr || item.headline}</p>
-                    </a>
-                  )
-                })
-              }
-            </div>
+            <h3 className="card-title" style={{color:'#dc2626'}}>급등 TOP 5 ▲</h3>
+            {gainers.map(s=>(
+              <div key={s.ticker} className="gl-row" style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:US_NAME_MAP[s.ticker]||s.ticker,market:'US'})}>
+                <span className="gl-ticker">{s.ticker}</span>
+                <span className="gl-price">${s.c?.toFixed(2)??'—'}</span>
+                <span className="gl-pct up">{fmtPct(s.dp)}</span>
+              </div>
+            ))}
           </div>
-        </>
-      )}
+          <div className="dash-card">
+            <h3 className="card-title" style={{color:'#2563eb'}}>급락 TOP 5 ▼</h3>
+            {losers.map(s=>(
+              <div key={s.ticker} className="gl-row" style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:US_NAME_MAP[s.ticker]||s.ticker,market:'US'})}>
+                <span className="gl-ticker">{s.ticker}</span>
+                <span className="gl-price">${s.c?.toFixed(2)??'—'}</span>
+                <span className="gl-pct down">{fmtPct(s.dp)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="dash-card">
+          <h3 className="card-title">Finnhub 실시간 뉴스</h3>
+          <div className="news-feed">
+            {news.length===0 ? <p className="empty-msg">뉴스를 불러올 수 없습니다</p>
+            : news.map((item,i)=>{
+              const dt = new Date(item.datetime*1000)
+              const bullish = item.sentiment?.bullishPercent
+              const sentiment = bullish==null?null:bullish>0.6?'positive':bullish<0.4?'negative':'neutral'
+              return (
+                <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="news-item">
+                  <div className="news-meta">
+                    <span className="news-source">{item.source}</span>
+                    <span className="news-dt">{dt.toLocaleDateString('ko-KR')}</span>
+                    {sentiment&&<span className={`sentiment-badge ${sentiment}`}>{sentiment==='positive'?'긍정':sentiment==='negative'?'부정':'중립'}</span>}
+                  </div>
+                  <p className="news-headline">{item.headline}</p>
+                </a>
+              )
+            })}
+          </div>
+        </div>
+      </>}
       <RecommendedStocksSection market="US" />
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  KR STOCKS TAB
-// ═══════════════════════════════════════════════════════
-function KRStocksTab() {
+/* ══════════════════════════════════════════════
+   KR STOCKS TAB
+══════════════════════════════════════════════ */
+function KRStocksTab({ onSelectStock }) {
+  const [subTab, setSubTab] = useState('market')
   const [indices, setIndices] = useState([])
   const [stocks, setStocks] = useState([])
   const [news, setNews] = useState('')
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    load()
-  }, [])
-
+  useEffect(()=>{load()},[])
   const load = async () => {
     setLoading(true)
-    const [idxRes, newsRes] = await Promise.allSettled([
-      supabase.functions.invoke('stock-kr-index', { body: {} }),
-      supabase.functions.invoke('query-tavily', {
-        body: {
-          query: '한국 코스피 코스닥 주요 뉴스 오늘 KOSPI KOSDAQ',
-          summarize: true,
-          lang: 'ko',
-        },
-      }),
+    const [idxRes,newsRes] = await Promise.allSettled([
+      supabase.functions.invoke('stock-kr-index',{body:{}}),
+      supabase.functions.invoke('query-tavily',{body:{query:'한국 코스피 코스닥 주요 뉴스 오늘',summarize:true,lang:'ko'}}),
     ])
-
-    if (idxRes.status === 'fulfilled') setIndices(idxRes.value.data || [])
-    if (newsRes.status === 'fulfilled') setNews(newsRes.value.data?.result || '')
-
-    const stockResults = await Promise.allSettled(
-      KR_MAJOR.map(s =>
-        supabase.functions.invoke('stock-kr-quote', { body: { ticker: s.ticker } })
-          .then(r => ({ ...s, ...(r.data || {}) }))
-      )
-    )
-    setStocks(stockResults.filter(r => r.status === 'fulfilled').map(r => r.value))
+    if (idxRes.status==='fulfilled') setIndices(idxRes.value.data||[])
+    if (newsRes.status==='fulfilled') setNews(newsRes.value.data?.result||'')
+    const stockResults = await Promise.allSettled(KR_MAJOR.map(s=>supabase.functions.invoke('stock-kr-quote',{body:{ticker:s.ticker}}).then(r=>({...s,...(r.data||{})}))))
+    setStocks(stockResults.filter(r=>r.status==='fulfilled').map(r=>r.value))
     setLoading(false)
   }
-
   return (
     <div className="kr-tab">
       <h2 className="tab-title">KR Markets</h2>
-      {loading ? <Spinner /> : (
-        <>
-          {/* KOSPI / KOSDAQ */}
-          <div className="idx-grid kr-idx-grid">
-            {indices.map((idx, i) => {
-              const pct = parseFloat(idx.change)
+      <div className="kr-subtabs">
+        <button className={`period-btn ${subTab==='market'?'active':''}`} onClick={()=>setSubTab('market')}>시장현황</button>
+        <button className={`period-btn ${subTab==='flow'?'active':''}`}   onClick={()=>setSubTab('flow')}>외국인/기관 수급</button>
+      </div>
+      {subTab==='market' && (loading ? <Spinner /> : <>
+        <div className="idx-grid kr-idx-grid">
+          {indices.map((idx,i)=>{
+            const pct=parseFloat(idx.change)
+            return (
+              <div key={i} className={`idx-card idx-card-lg ${upDown(pct)}`}>
+                <span className="idx-name">{idx.name}</span>
+                <span className="idx-value">{typeof idx.value==='number'?idx.value.toLocaleString():idx.value}</span>
+                <span className="idx-change">{fmtPct(pct)} {pct>=0?'▲':'▼'}</span>
+              </div>
+            )
+          })}
+        </div>
+        <div className="dash-card">
+          <h3 className="card-title">업종별 등락률</h3>
+          <div className="sector-bars">
+            {stocks.map(s=>{
+              const pct=s.changePercent||0
+              const barW=Math.min(Math.abs(pct)*15,100)
               return (
-                <div key={i} className={`idx-card idx-card-lg ${upDown(pct)}`}>
-                  <span className="idx-name">{idx.name}</span>
-                  <span className="idx-value">
-                    {typeof idx.value === 'number' ? idx.value.toLocaleString() : idx.value}
-                  </span>
-                  <span className="idx-change">{fmtPct(pct)} {pct >= 0 ? '▲' : '▼'}</span>
+                <div key={s.ticker} className="sb-row" style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:s.name,market:'KR'})}>
+                  <span className="sb-name">{s.name}</span>
+                  <div className="sb-track"><div className={`sb-fill ${upDown(pct)}`} style={{width:`${barW}%`}}/></div>
+                  <span className={`sb-pct ${upDown(pct)}`}>{fmtPct(pct)}</span>
                 </div>
               )
             })}
           </div>
-
-          {/* Sector bar chart */}
-          <div className="dash-card">
-            <h3 className="card-title">업종별 등락률 (주요 종목 기준)</h3>
-            <div className="sector-bars">
-              {stocks.map(s => {
-                const pct = s.changePercent || 0
-                const barW = Math.min(Math.abs(pct) * 15, 100)
-                return (
-                  <div key={s.ticker} className="sb-row">
-                    <span className="sb-name">{s.name}</span>
-                    <div className="sb-track">
-                      <div className={`sb-fill ${upDown(pct)}`} style={{ width: `${barW}%` }} />
-                    </div>
-                    <span className={`sb-pct ${upDown(pct)}`}>{fmtPct(pct)}</span>
-                  </div>
-                )
-              })}
+        </div>
+        <div className="dash-card">
+          <h3 className="card-title">KIS API 실시간 시세</h3>
+          <div className="kr-table">
+            <div className="krt-head">
+              <span>종목</span><span>현재가</span><span>전일비</span><span>등락률</span><span>거래량</span><span>52주 고/저</span>
             </div>
-          </div>
-
-          {/* KIS Real-time quotes */}
-          <div className="dash-card">
-            <h3 className="card-title">KIS API 실시간 시세</h3>
-            <div className="kr-table">
-              <div className="krt-head">
-                <span>종목</span>
-                <span>현재가</span>
-                <span>전일비</span>
-                <span>등락률</span>
-                <span>거래량</span>
-                <span>52주 고/저</span>
+            {stocks.map(s=>(
+              <div key={s.ticker} className={`krt-row ${upDown(s.changePercent)}`} style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:s.name,market:'KR'})}>
+                <span className="krt-name">{s.name}<small>{s.ticker}</small></span>
+                <span className="krt-price">₩{s.price?.toLocaleString('ko-KR')??'—'}</span>
+                <span className={`krt-chg ${upDown(s.changePercent)}`}>{s.change>=0?'+':''}{s.change?.toLocaleString('ko-KR')??'—'}</span>
+                <span className={`krt-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
+                <span className="krt-vol">{s.volume?.toLocaleString('ko-KR')??'—'}</span>
+                <span className="krt-52">{s.high52?`↑${s.high52?.toLocaleString('ko-KR')}`:''} / {s.low52?`↓${s.low52?.toLocaleString('ko-KR')}`:''}</span>
               </div>
-              {stocks.map(s => (
-                <div key={s.ticker} className={`krt-row ${upDown(s.changePercent)}`}>
-                  <span className="krt-name">
-                    {s.name}
-                    <small>{s.ticker}</small>
-                  </span>
-                  <span className="krt-price">₩{s.price?.toLocaleString('ko-KR') ?? '—'}</span>
-                  <span className={`krt-chg ${upDown(s.changePercent)}`}>
-                    {s.change >= 0 ? '+' : ''}{s.change?.toLocaleString('ko-KR') ?? '—'}
-                  </span>
-                  <span className={`krt-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
-                  <span className="krt-vol">{s.volume?.toLocaleString('ko-KR') ?? '—'}</span>
-                  <span className="krt-52">
-                    {s.high52 ? `↑${s.high52?.toLocaleString('ko-KR')}` : '—'} / {s.low52 ? `↓${s.low52?.toLocaleString('ko-KR')}` : '—'}
-                  </span>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
-
-          {/* News */}
-          <div className="dash-card">
-            <h3 className="card-title">국내 주요 뉴스 (AI)</h3>
-            <div className="news-body">
-              {news
-                ? news.split('\n').filter(l => l.trim()).map((l, i) => (
-                  <p key={i} className="news-line">{l}</p>
-                ))
-                : <p className="empty-msg">뉴스 로딩 중...</p>
-              }
-            </div>
+        </div>
+        <div className="dash-card">
+          <h3 className="card-title">국내 주요 뉴스 (AI)</h3>
+          <div className="news-body">
+            {news ? news.split('\n').filter(l=>l.trim()).map((l,i)=><p key={i} className="news-line">{l}</p>)
+            : <p className="empty-msg">뉴스 로딩 중...</p>}
           </div>
-        </>
-      )}
-      <RecommendedStocksSection market="KR" />
+        </div>
+        <RecommendedStocksSection market="KR" />
+      </>)}
+      {subTab==='flow' && <KRFlowView onSelectStock={onSelectStock} />}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  PORTFOLIO TAB
-// ═══════════════════════════════════════════════════════
-function PortfolioTab() {
-  const [portfolios, setPortfolios] = useState([])
-  const [stocks, setStocks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [editingId, setEditingId] = useState(null)
-  const [editName, setEditName] = useState('')
-  const [selected, setSelected] = useState(null)
-  const [chartPeriod, setChartPeriod] = useState('1M')
-  const [aiData, setAiData] = useState(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [usdKrwRate, setUsdKrwRate] = useState(1380)
+/* ── 외국인/기관 수급 뷰 ── */
+function KRFlowView({ onSelectStock }) {
+  const [data,setData]         = useState([])
+  const [loading,setLoading]   = useState(true)
+  const [error,setError]       = useState(null)
+  const [sortKey,setSortKey]   = useState('foreign_net')
+  const [sortDir,setSortDir]   = useState('desc')
+  const [lastUpdated,setLastUpdated] = useState(null)
 
-  // 종목 추가 관련 상태
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [newStock, setNewStock] = useState({
-    ticker: '',
-    name: '',
-    market: 'US',
-    quantity: '',
-    avg_price: '',
-    portfolio_id: '',
+  useEffect(()=>{loadFlow()},[])
+
+  const loadFlow = async () => {
+    setLoading(true); setError(null)
+    try {
+      const { data:result, error:err } = await supabase.functions.invoke('stock-kr-flow',{body:{}})
+      if (err) throw new Error(err.message||'수급 데이터 로딩 실패')
+      setData(Array.isArray(result)?result:[])
+      setLastUpdated(new Date())
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const toggleSort = key => {
+    if (sortKey===key) setSortDir(d=>d==='desc'?'asc':'desc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+  const sortArrow = key => sortKey!==key ? <span style={{opacity:0.3}}>↕</span>
+    : sortDir==='desc' ? <span style={{color:'#60a5fa'}}>▼</span> : <span style={{color:'#60a5fa'}}>▲</span>
+
+  const sorted = [...data].sort((a,b)=>{
+    const av=a[sortKey]??0, bv=b[sortKey]??0
+    return sortDir==='desc' ? bv-av : av-bv
   })
 
-  useEffect(() => { loadAll() }, [])
+  const fmtNet = v => {
+    if (v==null) return <span style={{color:'#475569'}}>—</span>
+    const sign = v>=0?'+':''
+    return <span className={v>=0?'flow-net-up':'flow-net-down'}>{sign}{Number(v).toLocaleString('ko-KR')}주</span>
+  }
+
+  return (
+    <div className="kr-flow-view">
+      {/* TOP5 요약 카드 */}
+      {!loading && data.length>0 && (
+        <div className="flow-summary-grid">
+          {[
+            {label:'🔴 외국인 순매수 TOP5',key:'foreign_net',dir:'desc'},
+            {label:'🔵 외국인 순매도 TOP5',key:'foreign_net',dir:'asc'},
+            {label:'🟠 기관 순매수 TOP5',key:'inst_net',dir:'desc'},
+            {label:'🟣 기관 순매도 TOP5',key:'inst_net',dir:'asc'},
+          ].map(({label,key,dir})=>(
+            <div key={label} className="dash-card flow-summary-card">
+              <h4 className="card-title" style={{fontSize:'12px',marginBottom:'0.75rem'}}>{label}</h4>
+              {[...data].filter(s=>s[key]!=null).sort((a,b)=>dir==='desc'?b[key]-a[key]:a[key]-b[key]).slice(0,5).map(s=>(
+                <div key={s.ticker} className="flow-mini-row" onClick={()=>onSelectStock?.({ticker:s.ticker,name:s.name,market:'KR'})}>
+                  <span className="flow-mini-name">{s.name}</span>
+                  <span className={s[key]>=0?'flow-net-up':'flow-net-down'}>{s[key]>=0?'+':''}{Number(s[key]).toLocaleString('ko-KR')}주</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 전체 테이블 */}
+      <div className="dash-card">
+        <div className="card-header">
+          <h3 className="card-title">외국인 / 기관 순매수 현황</h3>
+          <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+            {lastUpdated&&<span style={{fontSize:'11px',color:'#475569'}}>{lastUpdated.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})} 기준</span>}
+            <button className="rec-refresh-btn" onClick={loadFlow} disabled={loading}>{loading?'로딩 중...':'↻ 새로고침'}</button>
+          </div>
+        </div>
+        {loading && <Spinner />}
+        {error && (
+          <div style={{padding:'2rem',color:'#f87171',textAlign:'center'}}>
+            <p>⚠️ {error}</p>
+            <p style={{fontSize:'12px',color:'#64748b',marginTop:'0.5rem'}}>KIS API 키가 설정되지 않았거나 장이 마감된 경우 데이터를 불러올 수 없습니다.</p>
+          </div>
+        )}
+        {!loading && !error && data.length>0 && (
+          <div className="flow-table">
+            <div className="flow-head">
+              <span>종목</span>
+              <span>현재가</span>
+              <span>등락률</span>
+              <span>거래량</span>
+              <button className={`flow-sort-btn ${sortKey==='foreign_net'?'active':''}`} onClick={()=>toggleSort('foreign_net')}>외국인 순매수 {sortArrow('foreign_net')}</button>
+              <button className={`flow-sort-btn ${sortKey==='inst_net'?'active':''}`}    onClick={()=>toggleSort('inst_net')}>기관 순매수 {sortArrow('inst_net')}</button>
+              <button className={`flow-sort-btn ${sortKey==='indv_net'?'active':''}`}    onClick={()=>toggleSort('indv_net')}>개인 순매수 {sortArrow('indv_net')}</button>
+            </div>
+            {sorted.map(s=>(
+              <div key={s.ticker} className="flow-row" style={{cursor:'pointer'}} onClick={()=>onSelectStock?.({ticker:s.ticker,name:s.name,market:'KR'})}>
+                <span className="flow-name"><strong>{s.name}</strong><small>{s.ticker}</small></span>
+                <span className="flow-price">{s.price!=null?`₩${Number(s.price).toLocaleString('ko-KR')}`:'—'}</span>
+                <span className={`flow-pct ${s.changePercent!=null?upDown(s.changePercent):''}`}>{s.changePercent!=null?fmtPct(s.changePercent):'—'}</span>
+                <span className="flow-vol">{s.volume!=null?fmtVol(s.volume):'—'}</span>
+                <span>{fmtNet(s.foreign_net)}</span>
+                <span>{fmtNet(s.inst_net)}</span>
+                <span>{fmtNet(s.indv_net)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════
+   EARNINGS TAB
+══════════════════════════════════════════════ */
+function EarningsTab({ onSelectStock }) {
+  const now = new Date()
+  const [yr,   setYr]   = useState(now.getFullYear())
+  const [mo,   setMo]   = useState(now.getMonth()+1)
+  const [filt, setFilt] = useState('ALL')
+  const [data, setData] = useState({us:[],kr:[]})
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [krError, setKrError] = useState(null)   // OpenDART 부분 오류
+
+  useEffect(()=>{ loadEarnings() },[yr,mo])
+
+  const loadEarnings = async () => {
+    setLoading(true); setError(null); setKrError(null)
+    try {
+      const { data:result, error:err } = await supabase.functions.invoke('stock-earnings',{body:{year:yr,month:mo}})
+      if (err) throw new Error(err.message||'실적 데이터 로딩 실패')
+      setData(result||{us:[],kr:[]})
+      // OpenDART 부분 실패 메시지
+      if (result?.kr_error) {
+        setKrError(result.kr_error)
+      } else if (!result?.meta?.dartEnabled) {
+        setKrError('OPENDART_API_KEY 미설정 — 국내 실적 비활성화')
+      }
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const prevMonth = () => { if(mo===1){setYr(y=>y-1);setMo(12)}else setMo(m=>m-1) }
+  const nextMonth = () => { if(mo===12){setYr(y=>y+1);setMo(1)}else setMo(m=>m+1) }
+  const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+  const today  = now.toISOString().split('T')[0]
+
+  const combined = [
+    ...(filt!=='KR' ? (data.us||[]).map(e=>({...e,market:'US'})) : []),
+    ...(filt!=='US' ? (data.kr||[]).map(e=>({...e,market:'KR'})) : []),
+  ].sort((a,b)=>a.date.localeCompare(b.date))
+
+  const upcoming = combined.filter(e=>e.date>=today).length
+  const done     = combined.filter(e=>e.date<today).length
+  const beats    = combined.filter(e=>e.surprise_pct!=null&&e.surprise_pct>0).length
+  const misses   = combined.filter(e=>e.surprise_pct!=null&&e.surprise_pct<0).length
+
+  return (
+    <div className="earnings-tab">
+      <h2 className="tab-title">실적발표 캘린더</h2>
+
+      {/* 데이터 소스 안내 배너 */}
+      <div className="earn-source-bar">
+        <span className="earn-source-chip us-chip">🇺🇸 US — Finnhub 실시간</span>
+        <span className={`earn-source-chip ${data?.meta?.dartEnabled ? 'kr-chip' : 'kr-chip disabled'}`}>
+          🇰🇷 KR — OpenDART(금감원) {data?.meta?.dartEnabled ? '실시간' : '⚠️ API 키 필요'}
+        </span>
+        {data?.meta?.dartEnabled && (
+          <span className="earn-source-note">공시 접수일 기준 · DART 원문 링크 제공</span>
+        )}
+      </div>
+
+      {/* DART 키 미설정 안내 */}
+      {krError && !error && (
+        <div className="earn-dart-notice">
+          <span>⚠️ {krError}</span>
+          <a
+            href="https://opendart.fss.or.kr/uss/umt/EgovMberInsertView.do"
+            target="_blank" rel="noopener noreferrer"
+            className="earn-dart-link"
+          >
+            DART API 키 발급 →
+          </a>
+          <code className="earn-dart-cmd">supabase secrets set OPENDART_API_KEY=발급키</code>
+        </div>
+      )}
+
+      {/* 월 네비게이션 */}
+      <div className="earnings-nav">
+        <button className="earn-nav-btn" onClick={prevMonth}>‹</button>
+        <span className="earn-nav-label">{yr}년 {MONTHS[mo-1]}</span>
+        <button className="earn-nav-btn" onClick={nextMonth}>›</button>
+        <div className="earn-filter-btns">
+          {[{id:'ALL',label:'전체'},{id:'US',label:'🇺🇸 US'},{id:'KR',label:'🇰🇷 KR'}].map(f=>(
+            <button key={f.id} className={`period-btn ${filt===f.id?'active':''}`} onClick={()=>setFilt(f.id)}>{f.label}</button>
+          ))}
+        </div>
+        <button className="rec-refresh-btn" onClick={loadEarnings} disabled={loading} style={{marginLeft:'auto'}}>
+          {loading ? '로딩 중...' : '↻ 새로고침'}
+        </button>
+      </div>
+
+      {/* 요약 카드 */}
+      {!loading && combined.length>0 && (
+        <div className="earn-summary-row">
+          {[
+            {label:'발표 예정', val:upcoming, color:''},
+            {label:'공시 완료',  val:done,     color:''},
+            {label:'어닝 서프라이즈', val:beats,  color:'#f87171'},
+            {label:'실적 미달',  val:misses,   color:'#60a5fa'},
+          ].map(({label,val,color})=>(
+            <div key={label} className="dash-card earn-summary-card">
+              <div className="earn-summary-label">{label}</div>
+              <div className="earn-summary-val" style={color?{color}:{}}>{val}개</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {loading && <div className="dash-card"><Spinner /></div>}
+      {error && !loading && (
+        <div className="dash-card" style={{color:'#f87171',textAlign:'center',padding:'2rem'}}>⚠️ {error}</div>
+      )}
+      {!loading && !error && combined.length===0 && (
+        <div className="dash-card" style={{textAlign:'center',padding:'3rem',color:'#94a3b8'}}>
+          해당 월의 실적발표 일정이 없습니다
+          {data?.meta?.dartEnabled===false && (
+            <p style={{fontSize:'12px',marginTop:'0.75rem',color:'#64748b'}}>
+              국내 실적은 OPENDART_API_KEY 설정 후 조회 가능합니다
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 실적 테이블 */}
+      {!loading && !error && combined.length>0 && (
+        <div className="dash-card earn-table-wrap">
+          {/* US 컬럼 헤더 */}
+          {(filt==='ALL'||filt==='US') && (
+            <div className="earn-table-head earn-head-us">
+              <span>날짜/분기</span><span>종목</span><span>시장</span><span>발표 시점</span>
+              <span>매출 예상</span><span>EPS 예상</span><span>EPS 실적</span><span>서프라이즈/공시</span>
+            </div>
+          )}
+          {(filt==='KR') && (
+            <div className="earn-table-head earn-head-kr">
+              <span>접수일/분기</span><span>종목</span><span>시장</span><span>발표 시점</span>
+              <span>공시 종류</span><span>—</span><span>—</span><span>DART 원문</span>
+            </div>
+          )}
+          {filt==='ALL' && (
+            <div className="earn-table-head">
+              <span>날짜</span><span>종목</span><span>시장</span><span>발표 시점</span>
+              <span>매출 예상 / 공시종류</span><span>EPS 예상</span><span>EPS 실적</span><span>서프라이즈 / DART</span>
+            </div>
+          )}
+
+          {combined.map((e,i)=>{
+            const isPast  = e.date < today
+            const isToday = e.date === today
+            return (
+              <div
+                key={i}
+                className={`earn-row ${isPast?'past':''} ${isToday?'today':''}`}
+                onClick={()=>onSelectStock?.({ticker:e.ticker,name:e.name,market:e.market})}
+              >
+                {/* 날짜 */}
+                <span className="earn-date">
+                  {isToday && <span className="earn-today-badge">오늘</span>}
+                  <span>{e.date.slice(5)}</span>
+                  {e.quarter && <small style={{color:'#475569',fontSize:'10px'}}>{e.quarter}</small>}
+                </span>
+
+                {/* 종목 */}
+                <span className="earn-name">
+                  <strong>{e.name}</strong>
+                  <small>{e.ticker}</small>
+                </span>
+
+                {/* 시장 배지 */}
+                <span className={`sr-badge ${e.market==='US'?'us':'kr'}`}>{e.market}</span>
+
+                {/* 발표 시점 */}
+                <span className="earn-time">{e.time}</span>
+
+                {/* 매출 예상 / 공시 종류 */}
+                <span className="earn-rev">
+                  {e.market==='US'
+                    ? (e.rev_est_B!=null ? `$${e.rev_est_B}B` : '—')
+                    : <span className="earn-report-nm" title={e.report_nm}>{e.report_nm ? e.report_nm.slice(0,14)+(e.report_nm.length>14?'…':'') : '—'}</span>
+                  }
+                </span>
+
+                {/* EPS 예상 */}
+                <span className="earn-eps">
+                  {e.market==='US' ? (e.eps_est!=null ? `$${Number(e.eps_est).toFixed(2)}` : '—') : '—'}
+                </span>
+
+                {/* EPS 실적 */}
+                <span className="earn-eps">
+                  {e.market==='US'
+                    ? (e.eps_actual!=null
+                        ? <strong style={{color:e.eps_actual>=(e.eps_est||0)?'#f87171':'#60a5fa'}}>${Number(e.eps_actual).toFixed(2)}</strong>
+                        : <span style={{color:'#475569'}}>미발표</span>)
+                    : '—'
+                  }
+                </span>
+
+                {/* 서프라이즈 / DART 링크 */}
+                <span className="earn-surprise">
+                  {e.market==='US'
+                    ? (e.surprise_pct!=null
+                        ? <span className={e.surprise_pct>0?'earn-surprise-pos':e.surprise_pct<0?'earn-surprise-neg':''}>
+                            {e.surprise_pct>0?'+':''}{Number(e.surprise_pct).toFixed(1)}%
+                          </span>
+                        : <span style={{color:'#475569'}}>—</span>)
+                    : (e.dart_url
+                        ? <a href={e.dart_url} target="_blank" rel="noopener noreferrer"
+                            className="earn-dart-btn" onClick={ev=>ev.stopPropagation()}>
+                            DART ↗
+                          </a>
+                        : <span style={{color:'#475569'}}>—</span>)
+                  }
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════
+   PORTFOLIO TAB
+══════════════════════════════════════════════ */
+function PortfolioTab({ onSelectStock }) {
+  const [portfolios, setPortfolios] = useState([])
+  const [stocks, setStocks]         = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [editingId, setEditingId]   = useState(null)
+  const [editName, setEditName]     = useState('')
+  const [selected, setSelected]     = useState(null)
+  const [chartPeriod, setChartPeriod] = useState('1M')
+  const [aiData, setAiData]         = useState(null)
+  const [aiLoading, setAiLoading]   = useState(false)
+  const [usdKrwRate, setUsdKrwRate] = useState(1380)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [newStock, setNewStock]     = useState({ ticker:'', name:'', market:'US', quantity:'', avg_price:'', portfolio_id:'' })
+
+  useEffect(()=>{ loadAll() },[])
 
   const loadAll = async () => {
     setLoading(true)
     try {
-      const { data: rateData } = await supabase.functions.invoke('get-exchange-rate')
+      const { data:rateData } = await supabase.functions.invoke('get-exchange-rate')
       if (rateData?.usdToKrw) setUsdKrwRate(rateData.usdToKrw)
-    } catch (e) { console.error('환율 로딩 실패', e) }
-    const [{ data: pfRows }, { data: stockRows, error }] = await Promise.all([
+    } catch {}
+    const [{ data:pfRows }, { data:stockRows, error }] = await Promise.all([
       supabase.from('portfolios').select('*').order('id'),
       supabase.from('portfolio').select('*'),
     ])
-    const loadedPfs = pfRows?.length ? pfRows : [
-      { id: 1, name: '포트폴리오 1' },
-      { id: 2, name: '포트폴리오 2' },
-      { id: 3, name: '포트폴리오 3' },
-    ]
+    const loadedPfs = pfRows?.length ? pfRows : [{id:1,name:'포트폴리오 1'},{id:2,name:'포트폴리오 2'},{id:3,name:'포트폴리오 3'}]
     setPortfolios(loadedPfs)
-    
-    // 신규 추가 시 기본 포트폴리오 ID 설정
-    if (!newStock.portfolio_id && loadedPfs.length > 0) {
-      setNewStock(prev => ({ ...prev, portfolio_id: loadedPfs[0].id }))
-    }
-
+    if (!newStock.portfolio_id && loadedPfs.length>0) setNewStock(prev=>({...prev,portfolio_id:loadedPfs[0].id}))
     if (!error && stockRows) {
-       const withPx = await Promise.allSettled(
-         stockRows.map(async s => {
-           const fn = s.market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
-           const { data: q } = await supabase.functions.invoke(fn, { body: { ticker: s.ticker } })
-           const price = s.market === 'US' ? q?.c : q?.price
-           const pct = price ? ((price - s.avg_price) / s.avg_price * 100) : 0
-           const todayPct = s.market === 'US' ? q?.dp : q?.changePercent
-           return { ...s, currentPrice: price, changePercent: pct, todayChangePercent: todayPct }
-         })
-       )
-      setStocks(withPx.filter(r => r.status === 'fulfilled').map(r => r.value))
+      const withPx = await Promise.allSettled(stockRows.map(async s=>{
+        const fn = s.market==='US'?'stock-us-quote':'stock-kr-quote'
+        const { data:q } = await supabase.functions.invoke(fn,{body:{ticker:s.ticker}})
+        const price = s.market==='US'?q?.c:q?.price
+        const pct = price?((price-s.avg_price)/s.avg_price*100):0
+        const todayPct = s.market==='US'?q?.dp:q?.changePercent
+        return { ...s, currentPrice:price, changePercent:pct, todayChangePercent:todayPct }
+      }))
+      setStocks(withPx.filter(r=>r.status==='fulfilled').map(r=>r.value))
     }
     setLoading(false)
   }
 
-  const handleAddStock = async (e) => {
+  const handleAddStock = async e => {
     e.preventDefault()
-    if (!newStock.ticker || !newStock.quantity || !newStock.avg_price) {
-      alert('모든 필드를 입력해주세요.')
-      return
-    }
+    if (!newStock.ticker||!newStock.quantity||!newStock.avg_price) { alert('모든 필드를 입력해주세요.'); return }
     setIsSubmitting(true)
-    const { error } = await supabase.from('portfolio').insert([{
-      ...newStock,
-      quantity: Number(newStock.quantity),
-      avg_price: Number(newStock.avg_price),
-      portfolio_id: Number(newStock.portfolio_id)
-    }])
-    
-    if (error) {
-      alert('추가 실패: ' + error.message)
-    } else {
-      setShowAddForm(false)
-      setNewStock({ ticker: '', name: '', market: 'US', quantity: '', avg_price: '', portfolio_id: portfolios[0]?.id })
-      loadAll()
-    }
+    const { error } = await supabase.from('portfolio').insert([{ ...newStock, quantity:Number(newStock.quantity), avg_price:Number(newStock.avg_price), portfolio_id:Number(newStock.portfolio_id) }])
+    if (error) alert('추가 실패: '+error.message)
+    else { setShowAddForm(false); setNewStock({ ticker:'', name:'', market:'US', quantity:'', avg_price:'', portfolio_id:portfolios[0]?.id }); loadAll() }
     setIsSubmitting(false)
   }
 
-  const saveName = async (id) => {
-    setPortfolios(pfs => pfs.map(p => p.id === id ? { ...p, name: editName } : p))
-    await supabase.from('portfolios').update({ name: editName }).eq('id', id)
+  const saveName = async id => {
+    setPortfolios(pfs=>pfs.map(p=>p.id===id?{...p,name:editName}:p))
+    await supabase.from('portfolios').update({name:editName}).eq('id',id)
     setEditingId(null)
   }
 
-  const handleCardClick = async (stock) => {
-    setSelected(stock)
-    setAiData(null)
-    setAiLoading(true)
-    const { data } = await supabase.functions.invoke('stock-ai-analyze', {
-      body: { ticker: stock.ticker, market: stock.market },
-    })
-    setAiData(data || null)
-    setAiLoading(false)
+  const handleCardClick = async stock => {
+    setSelected(stock); setAiData(null); setAiLoading(true)
+    const { data } = await supabase.functions.invoke('stock-ai-analyze',{body:{ticker:stock.ticker,market:stock.market}})
+    setAiData(data||null); setAiLoading(false)
   }
 
   const getColStats = useCallback((pfId) => {
-    const col = stocks.filter(s => s.portfolio_id === pfId)
-    let b = 0, e = 0, usE = 0, krE = 0
-    col.forEach(s => {
-      const buy = s.quantity * s.avg_price, evalAmt = s.quantity * (s.currentPrice || s.avg_price)
-      if (s.market === 'US') { usE += evalAmt; b += buy * usdKrwRate; e += evalAmt * usdKrwRate }
-      else { krE += evalAmt; b += buy; e += evalAmt }
+    const col = stocks.filter(s=>s.portfolio_id===pfId)
+    let b=0,e=0,usE=0,krE=0
+    col.forEach(s=>{
+      const buy=s.quantity*s.avg_price, ev=s.quantity*(s.currentPrice||s.avg_price)
+      if (s.market==='US'){usE+=ev;b+=buy*usdKrwRate;e+=ev*usdKrwRate}else{krE+=ev;b+=buy;e+=ev}
     })
-    const pKRW = e - b, pPct = b > 0 ? (pKRW / b) * 100 : 0
-    return { col, usEvalTotal: usE, krEvalTotal: krE, totalKRW: e, profitKRW: pKRW, profitPct: pPct }
-  }, [stocks, usdKrwRate])
+    return { col, usEvalTotal:usE, krEvalTotal:krE, totalKRW:e, profitKRW:e-b, profitPct:b>0?((e-b)/b*100):0 }
+  },[stocks,usdKrwRate])
 
-  const { overallBuyKRW, overallEvalKRW, overallProfitKRW, overallProfitPct } = (function() {
-    let b = 0, e = 0
-    stocks.forEach(s => {
-      const buy = s.quantity * s.avg_price, evalAmt = s.quantity * (s.currentPrice || s.avg_price)
-      if (s.market === 'US') { b += buy * usdKrwRate; e += evalAmt * usdKrwRate }
-      else { b += buy; e += evalAmt }
+  const overall = (()=>{
+    let b=0,e=0
+    stocks.forEach(s=>{
+      const buy=s.quantity*s.avg_price,ev=s.quantity*(s.currentPrice||s.avg_price)
+      if(s.market==='US'){b+=buy*usdKrwRate;e+=ev*usdKrwRate}else{b+=buy;e+=ev}
     })
-    const pKRW = e - b, pPct = b > 0 ? (pKRW / b) * 100 : 0
-    return { overallBuyKRW: b, overallEvalKRW: e, overallProfitKRW: pKRW, overallProfitPct: pPct }
+    return {buyKRW:b,evalKRW:e,profitKRW:e-b,profitPct:b>0?((e-b)/b*100):0}
   })()
 
   const { startDate, endDate } = calcDateRange(chartPeriod)
@@ -978,172 +1029,105 @@ function PortfolioTab() {
       <div className="pf-tab-hdr">
         <h2 className="tab-title">내 포트폴리오</h2>
         <div className="pf-tab-actions">
-          <button className="pf-action-btn refresh" onClick={loadAll} disabled={loading} title="새로고침">
-            {loading ? '...' : '↻ 새로고침'}
-          </button>
-          <button className="pf-action-btn add" onClick={() => setShowAddForm(!showAddForm)}>
-            {showAddForm ? '닫기' : '+ 종목 추가'}
-          </button>
+          <button className="pf-action-btn refresh" onClick={loadAll} disabled={loading}>{loading?'...' :'↻ 새로고침'}</button>
+          <button className="pf-action-btn add" onClick={()=>setShowAddForm(!showAddForm)}>{showAddForm?'닫기':'+ 종목 추가'}</button>
         </div>
       </div>
 
-      {!loading && stocks.length > 0 && (
+      {!loading && stocks.length>0 && (
         <div className="overall-summary dash-card">
-          <div className="summary-item">
-            <span>총 매입</span>
-            <strong>₩{overallBuyKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
-          </div>
-          <div className="summary-item">
-            <span>총 평가</span>
-            <strong>₩{overallEvalKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
-          </div>
-          <div className={`summary-item ${overallProfitKRW >= 0 ? 'up' : 'down'}`}>
-            <span>총 손익</span>
-            <strong>{overallProfitKRW >= 0 ? '+' : ''}{overallProfitKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({overallProfitPct.toFixed(2)}%)</strong>
-          </div>
+          {[
+            {label:'총 매입',val:`₩${overall.buyKRW.toLocaleString(undefined,{maximumFractionDigits:0})}`},
+            {label:'총 평가',val:`₩${overall.evalKRW.toLocaleString(undefined,{maximumFractionDigits:0})}`},
+            {label:'총 손익',val:`${overall.profitKRW>=0?'+':''}₩${overall.profitKRW.toLocaleString(undefined,{maximumFractionDigits:0})} (${overall.profitPct.toFixed(2)}%)`,cls:upDown(overall.profitKRW)},
+          ].map(({label,val,cls})=>(
+            <div key={label} className={`summary-item ${cls||''}`}>
+              <span>{label}</span><strong>{val}</strong>
+            </div>
+          ))}
         </div>
       )}
 
       {showAddForm && (
         <form className="add-stock-form dash-card" onSubmit={handleAddStock}>
           <div className="form-grid">
-            <div className="form-group">
-              <label>시장</label>
-              <select value={newStock.market} onChange={e => setNewStock({...newStock, market: e.target.value})}>
-                <option value="US">🇺🇸 미국 (US)</option>
-                <option value="KR">🇰🇷 한국 (KR)</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>티커/코드</label>
-              <input 
-                placeholder="AAPL 또는 005930" 
-                value={newStock.ticker} 
-                onChange={e => setNewStock({...newStock, ticker: e.target.value.toUpperCase()})}
-              />
-            </div>
-            <div className="form-group">
-              <label>종목명 (선택)</label>
-              <input 
-                placeholder="애플" 
-                value={newStock.name} 
-                onChange={e => setNewStock({...newStock, name: e.target.value})}
-              />
-            </div>
-            <div className="form-group">
-              <label>수량</label>
-              <input 
-                type="number" 
-                placeholder="0" 
-                value={newStock.quantity} 
-                onChange={e => setNewStock({...newStock, quantity: e.target.value})}
-              />
-            </div>
-            <div className="form-group">
-              <label>평균단가</label>
-              <input 
-                type="number" 
-                step="any" 
-                placeholder="0.00" 
-                value={newStock.avg_price} 
-                onChange={e => setNewStock({...newStock, avg_price: e.target.value})}
-              />
-            </div>
+            {[
+              {label:'시장',type:'select',key:'market',opts:[{v:'US',l:'🇺🇸 미국 (US)'},{v:'KR',l:'🇰🇷 한국 (KR)'}]},
+              {label:'티커/코드',type:'text',key:'ticker',ph:'AAPL 또는 005930'},
+              {label:'종목명(선택)',type:'text',key:'name',ph:'애플'},
+              {label:'수량',type:'number',key:'quantity',ph:'0'},
+              {label:'평균단가',type:'number',key:'avg_price',ph:'0.00',step:'any'},
+            ].map(f=>(
+              <div key={f.key} className="form-group">
+                <label>{f.label}</label>
+                {f.type==='select'
+                  ? <select value={newStock[f.key]} onChange={e=>setNewStock({...newStock,[f.key]:e.target.value})}>
+                      {f.opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+                    </select>
+                  : <input type={f.type} placeholder={f.ph} step={f.step} value={newStock[f.key]}
+                      onChange={e=>setNewStock({...newStock,[f.key]:f.key==='ticker'?e.target.value.toUpperCase():e.target.value})} />
+                }
+              </div>
+            ))}
             <div className="form-group">
               <label>포트폴리오</label>
-              <select value={newStock.portfolio_id} onChange={e => setNewStock({...newStock, portfolio_id: e.target.value})}>
-                {portfolios.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
+              <select value={newStock.portfolio_id} onChange={e=>setNewStock({...newStock,portfolio_id:e.target.value})}>
+                {portfolios.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
           </div>
-          <button type="submit" className="form-submit-btn" disabled={isSubmitting}>
-            {isSubmitting ? '추가 중...' : '포트폴리오에 추가'}
-          </button>
+          <button type="submit" className="form-submit-btn" disabled={isSubmitting}>{isSubmitting?'추가 중...':'포트폴리오에 추가'}</button>
         </form>
       )}
 
-      {loading && stocks.length === 0 ? <Spinner /> : (
+      {loading && stocks.length===0 ? <Spinner /> : (
         <div className="pf-multi-cols">
-          {portfolios.map(pf => {
+          {portfolios.map(pf=>{
             const { col, usEvalTotal, krEvalTotal, totalKRW, profitKRW, profitPct } = getColStats(pf.id)
             return (
               <div key={pf.id} className="pf-col">
                 <div className="pf-col-hdr">
-                  {editingId === pf.id ? (
-                    <input
-                      className="pf-col-name-input"
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      onBlur={() => saveName(pf.id)}
-                      onKeyDown={e => e.key === 'Enter' && saveName(pf.id)}
-                      autoFocus
-                    />
-                  ) : (
-                    <span
-                      className="pf-col-name"
-                      onClick={() => { setEditingId(pf.id); setEditName(pf.name) }}
-                    >{pf.name} <span className="pf-col-edit-icon">✎</span></span>
-                  )}
-                  <div className="pf-col-total">
-                    ₩{totalKRW.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
-                  </div>
-                  <div className={`pf-col-profit ${profitKRW >= 0 ? 'up' : 'down'}`}>
-                    {profitKRW >= 0 ? '+' : ''}{profitKRW.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({profitPct.toFixed(2)}%)
-                  </div>
+                  {editingId===pf.id
+                    ? <input className="pf-col-name-input" value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>saveName(pf.id)} onKeyDown={e=>e.key==='Enter'&&saveName(pf.id)} autoFocus />
+                    : <span className="pf-col-name" onClick={()=>{setEditingId(pf.id);setEditName(pf.name)}}>{pf.name} <span className="pf-col-edit-icon">✎</span></span>
+                  }
+                  <div className="pf-col-total">₩{totalKRW.toLocaleString('ko-KR',{maximumFractionDigits:0})}</div>
+                  <div className={`pf-col-profit ${profitKRW>=0?'up':'down'}`}>{profitKRW>=0?'+':''}₩{profitKRW.toLocaleString(undefined,{maximumFractionDigits:0})} ({profitPct.toFixed(2)}%)</div>
                   <div className="pf-col-subs">
-                    <span>🇺🇸 ${usEvalTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-                    <span>🇰🇷 ₩{krEvalTotal.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</span>
+                    <span>🇺🇸 ${usEvalTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</span>
+                    <span>🇰🇷 ₩{krEvalTotal.toLocaleString('ko-KR',{maximumFractionDigits:0})}</span>
                   </div>
                 </div>
                 <div className="pf-col-stocks">
-                  {col.length === 0 ? (
-                    <p className="empty-msg" style={{ padding: '1.5rem', textAlign: 'center' }}>종목 없음</p>
-                  ) : col.map(s => (
-                    <div
-                      key={s.id}
-                      className={`pf-col-card ${upDown(s.changePercent)} ${selected?.id === s.id ? 'selected' : ''}`}
-                      onClick={() => handleCardClick(s)}
-                    >
+                  {col.length===0 ? <p className="empty-msg" style={{padding:'1.5rem',textAlign:'center'}}>종목 없음</p>
+                  : col.map(s=>(
+                    <div key={s.id} className={`pf-col-card ${upDown(s.changePercent)} ${selected?.id===s.id?'selected':''}`} onClick={()=>handleCardClick(s)}>
                       <div className="pfc-header">
                         <div className="pfc-ticker-wrap">
-                          {s.name && <span className="pfc-name">{s.name}</span>}
+                          {s.name&&<span className="pfc-name">{s.name}</span>}
                           <span className="pfc-ticker">{s.ticker}</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                        <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'2px'}}>
                           <span className={`pfc-pct ${upDown(s.changePercent)}`}>{fmtPct(s.changePercent)}</span>
-                          <span className={`pfc-pct ${upDown(s.todayChangePercent)}`} style={{ fontSize: '11px', opacity: 0.85 }}>
-                            📅 {fmtPct(s.todayChangePercent)}
-                          </span>
+                          <span className={`pfc-pct ${upDown(s.todayChangePercent)}`} style={{fontSize:'11px',opacity:0.85}}>📅 {fmtPct(s.todayChangePercent)}</span>
                         </div>
                       </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">수량</span>
-                        <span className="pfc-val">{s.quantity}주</span>
-                      </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">매입가</span>
-                        <span className="pfc-val">{fmtPrice(s.avg_price, s.market)}</span>
-                      </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">매입금액</span>
-                        <span className="pfc-val">{fmtPrice(s.quantity * s.avg_price, s.market)}</span>
-                      </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">현재가</span>
-                        <span className="pfc-val">{fmtPrice(s.currentPrice, s.market)}</span>
-                      </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">평가금액</span>
-                        <span className="pfc-val pfc-eval">
-                          {fmtPrice(s.quantity * (s.currentPrice || s.avg_price), s.market)}
-                        </span>
-                      </div>
-                      <div className="pfc-row">
-                        <span className="pfc-label">평가손익</span>
-                        <span className={`pfc-val ${upDown(s.changePercent)}`}>
-                          {s.market === 'US' ? '$' : '₩'}{((s.currentPrice - s.avg_price) * s.quantity).toLocaleString(undefined, { maximumFractionDigits: s.market === 'US' ? 2 : 0 })}
+                      {[
+                        {label:'수량',val:`${s.quantity}주`},
+                        {label:'매입가',val:fmtPrice(s.avg_price,s.market)},
+                        {label:'현재가',val:fmtPrice(s.currentPrice,s.market)},
+                        {label:'평가금액',val:fmtPrice(s.quantity*(s.currentPrice||s.avg_price),s.market)},
+                        {label:'평가손익',val:`${s.market==='US'?'$':'₩'}${((s.currentPrice-s.avg_price)*s.quantity).toLocaleString(undefined,{maximumFractionDigits:s.market==='US'?2:0})}`,cls:upDown(s.changePercent)},
+                      ].map(({label,val,cls})=>(
+                        <div key={label} className="pfc-row">
+                          <span className="pfc-label">{label}</span>
+                          <span className={`pfc-val ${cls||''}`}>{val}</span>
+                        </div>
+                      ))}
+                      <div style={{marginTop:'0.5rem',textAlign:'right'}}>
+                        <span className="earn-today-badge" style={{cursor:'pointer',background:'rgba(37,99,235,0.25)'}}
+                          onClick={ev=>{ev.stopPropagation();onSelectStock?.({ticker:s.ticker,name:s.name||s.ticker,market:s.market})}}>
+                          상세보기 →
                         </span>
                       </div>
                     </div>
@@ -1158,37 +1142,18 @@ function PortfolioTab() {
       {selected && (
         <div className="pf-detail">
           <div className="pf-detail-hdr">
-            <div>
-              <h3>{selected.ticker} 차트</h3>
-              <small style={{ color: '#94a3b8' }}>{selected.market === 'US' ? '미국주식' : '국내주식'}</small>
-            </div>
+            <div><h3>{selected.ticker} 차트</h3><small style={{color:'#94a3b8'}}>{selected.market==='US'?'미국주식':'국내주식'}</small></div>
             <PeriodBtns value={chartPeriod} onChange={setChartPeriod} />
           </div>
-          <ChartWidget
-            key={`${selected.ticker}-${chartPeriod}`}
-            ticker={selected.ticker}
-            market={selected.market}
-            height={260}
-            type="candlestick"
-            startDate={startDate}
-            endDate={endDate}
-          />
+          <ChartWidget key={`${selected.ticker}-${chartPeriod}`} ticker={selected.ticker} market={selected.market} height={260} type="candlestick" startDate={startDate} endDate={endDate} />
           <div className="ai-panel">
             <h4>AI 분석 코멘트</h4>
             {aiLoading ? <Spinner /> : aiData ? (
               <div className="ai-blocks">
-                <div className="ai-block">
-                  <span className="ai-badge qwen">Qwen3 · 수치 분석</span>
-                  <p>{aiData.analysis || '—'}</p>
-                </div>
-                <div className="ai-block">
-                  <span className="ai-badge compound">Tavily · 뉴스 요약</span>
-                  <p>{aiData.newsSummary || '—'}</p>
-                </div>
+                <div className="ai-block"><span className="ai-badge qwen">Qwen3 · 수치 분석</span><p>{aiData.analysis||'—'}</p></div>
+                <div className="ai-block"><span className="ai-badge compound">Tavily · 뉴스 요약</span><p>{aiData.newsSummary||'—'}</p></div>
               </div>
-            ) : (
-              <p className="empty-msg">종목 카드를 클릭하면 AI 분석이 표시됩니다</p>
-            )}
+            ) : <p className="empty-msg">종목 카드를 클릭하면 AI 분석이 표시됩니다</p>}
           </div>
         </div>
       )}
@@ -1196,192 +1161,128 @@ function PortfolioTab() {
   )
 }
 
-// ═══════════════════════════════════════════════════════
-//  SEARCH TAB
-// ═══════════════════════════════════════════════════════
-function SearchTab() {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [searched, setSearched] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [detail, setDetail] = useState(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+/* ══════════════════════════════════════════════
+   SEARCH TAB
+══════════════════════════════════════════════ */
+function SearchTab({ pendingStock, onClearPending }) {
+  const [query,setQuery]           = useState('')
+  const [results,setResults]       = useState([])
+  const [searched,setSearched]     = useState(false)
+  const [searching,setSearching]   = useState(false)
+  const [detail,setDetail]         = useState(null)
+  const [detailLoading,setDetailLoading] = useState(false)
+
+  useEffect(()=>{
+    if (pendingStock) { selectStock(pendingStock); onClearPending?.() }
+  },[pendingStock])
 
   const doSearch = async () => {
     if (!query.trim()) return
-    setSearching(true)
-    setSearched(false)
-    setDetail(null)
-    const [usRes, krRes] = await Promise.allSettled([
-      supabase.functions.invoke('stock-us-search', { body: { query } }),
-      supabase.functions.invoke('stock-kr-search', { body: { query } }),
+    setSearching(true); setSearched(false); setDetail(null)
+    const [usRes,krRes] = await Promise.allSettled([
+      supabase.functions.invoke('stock-us-search',{body:{query}}),
+      supabase.functions.invoke('stock-kr-search',{body:{query}}),
     ])
-    const us = usRes.status === 'fulfilled' && Array.isArray(usRes.value.data)
-      ? usRes.value.data.map(s => ({ ...s, market: 'US' })) : []
-    const kr = krRes.status === 'fulfilled' && Array.isArray(krRes.value.data)
-      ? krRes.value.data.map(s => ({ ...s, market: 'KR' })) : []
-    setResults([...us.slice(0, 6), ...kr.slice(0, 6)])
-    setSearched(true)
-    setSearching(false)
+    const us = usRes.status==='fulfilled'&&Array.isArray(usRes.value.data)?usRes.value.data.map(s=>({...s,market:'US'})):[]
+    const kr = krRes.status==='fulfilled'&&Array.isArray(krRes.value.data)?krRes.value.data.map(s=>({...s,market:'KR'})):[]
+    setResults([...us.slice(0,6),...kr.slice(0,6)])
+    setSearched(true); setSearching(false)
   }
 
-  const selectStock = async (stock) => {
-    setDetailLoading(true)
-    const ticker = stock.symbol || stock.ticker
+  const selectStock = async stock => {
+    setDetailLoading(true); setDetail(null)
+    const ticker = stock.symbol||stock.ticker
     const market = stock.market
-    const fn = market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
-
-    const [quoteRes, newsRes, aiRes] = await Promise.allSettled([
-      supabase.functions.invoke(fn, { body: { ticker } }),
-      market === 'US'
-        ? supabase.functions.invoke('stock-us-news', { body: { ticker } })
-        : Promise.resolve({ data: { news: [] } }),
-      supabase.functions.invoke('stock-ai-analyze', { body: { ticker, market } }),
+    const fn = market==='US'?'stock-us-quote':'stock-kr-quote'
+    const [quoteRes,newsRes,aiRes] = await Promise.allSettled([
+      supabase.functions.invoke(fn,{body:{ticker}}),
+      market==='US'?supabase.functions.invoke('stock-us-news',{body:{ticker}}):Promise.resolve({data:{news:[]}}),
+      supabase.functions.invoke('stock-ai-analyze',{body:{ticker,market}}),
     ])
-
-    const quote = quoteRes.status === 'fulfilled' ? (quoteRes.value.data || {}) : {}
-    const news  = newsRes.status === 'fulfilled'  ? (newsRes.value.data?.news?.slice(0, 5) || []) : []
-    const ai    = aiRes.status === 'fulfilled'    ? (aiRes.value.data || {}) : {}
-
-    // Compute 52W for US stocks from 1-year weekly chart
-    let high52 = quote.high52 ?? null
-    let low52  = quote.low52  ?? null
-    if (market === 'US' && !high52) {
+    const quote = quoteRes.status==='fulfilled'?(quoteRes.value.data||{}):{}
+    const news  = newsRes.status==='fulfilled'?(newsRes.value.data?.news?.slice(0,5)||[]):[]
+    const ai    = aiRes.status==='fulfilled'?(aiRes.value.data||{}):{}
+    let high52=quote.high52??null, low52=quote.low52??null
+    if (market==='US'&&!high52) {
       try {
-        const { startDate: s, endDate: e } = calcDateRange('1Y')
-        const { data: chartData } = await supabase.functions.invoke('stock-us-chart', {
-          body: { ticker, period: 'W', startDate: s, endDate: e },
-        })
-        if (Array.isArray(chartData) && chartData.length > 0) {
-          high52 = Math.max(...chartData.map(d => d.high))
-          low52  = Math.min(...chartData.map(d => d.low))
-        }
+        const { startDate:s, endDate:e } = calcDateRange('1Y')
+        const { data:cd } = await supabase.functions.invoke('stock-us-chart',{body:{ticker,period:'W',startDate:s,endDate:e}})
+        if (Array.isArray(cd)&&cd.length>0) { high52=Math.max(...cd.map(d=>d.high)); low52=Math.min(...cd.map(d=>d.low)) }
       } catch {}
     }
-
-    setDetail({
-      ticker,
-      name: stock.description || stock.name || ticker,
-      market,
-      quote,
-      news,
-      ai,
-      high52,
-      low52,
-    })
+    setDetail({ ticker, name:stock.description||stock.name||US_NAME_MAP[ticker]||ticker, market, quote, news, ai, high52, low52 })
     setDetailLoading(false)
   }
 
-  const q = detail?.quote || {}
-  const price = detail?.market === 'US' ? q.c : q.price
-  const pct   = detail?.market === 'US' ? q.dp : q.changePercent
-  const dayH  = detail?.market === 'US' ? q.h  : null
-  const dayL  = detail?.market === 'US' ? q.l  : null
-  const vol   = q.volume ?? null
-  const per   = q.per ?? null
-  const pbr   = q.pbr ?? null
-
-  const { startDate: c3m, endDate: c3me } = calcDateRange('3M')
+  const q     = detail?.quote||{}
+  const price = detail?.market==='US'?q.c:q.price
+  const pct   = detail?.market==='US'?q.dp:q.changePercent
+  const { startDate:c3m, endDate:c3me } = calcDateRange('3M')
 
   return (
     <div className="search-tab">
-      {/* Search bar */}
-      <div className={`search-bar ${query ? 'focused' : ''}`}>
+      <div className="search-bar">
         <span className="search-icon">🔍</span>
-        <input
-          type="text"
-          className="search-input"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && doSearch()}
-          placeholder="종목명 또는 티커 입력 (예: NVDA, 삼성전자, 005930)"
-        />
-        <button className="search-btn" onClick={doSearch} disabled={searching}>
-          {searching ? '검색 중...' : '검색'}
-        </button>
+        <input type="text" className="search-input" value={query} onChange={e=>setQuery(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="종목명 또는 티커 입력 (예: NVDA, 삼성전자, 005930)" />
+        <button className="search-btn" onClick={doSearch} disabled={searching}>{searching?'검색 중...':'검색'}</button>
       </div>
 
-      {/* Result list */}
-      {!detail && searched && (
-        results.length > 0 ? (
-          <div className="sr-list">
-            {results.map((s, i) => (
-              <div key={i} className="sr-item" onClick={() => selectStock(s)}>
-                <div className="sr-left">
-                  <span className="sr-ticker">{s.symbol || s.ticker}</span>
-                  <span className="sr-name">{s.description || s.name}</span>
+      {!detail&&!detailLoading&&searched&&(
+        results.length>0
+          ? <div className="sr-list">
+              {results.map((s,i)=>(
+                <div key={i} className="sr-item" onClick={()=>selectStock(s)}>
+                  <div className="sr-left">
+                    <span className="sr-ticker">{s.symbol||s.ticker}</span>
+                    <span className="sr-name">{s.description||s.name}</span>
+                  </div>
+                  <span className={`sr-badge ${s.market==='US'?'us':'kr'}`}>{s.market}</span>
                 </div>
-                <span className={`sr-badge ${s.market === 'US' ? 'us' : 'kr'}`}>{s.market}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="empty-msg" style={{ marginTop: '2rem', textAlign: 'center' }}>
-            "{query}" 검색 결과가 없습니다
-          </p>
-        )
+              ))}
+            </div>
+          : <p className="empty-msg" style={{marginTop:'2rem',textAlign:'center'}}>"{query}" 검색 결과가 없습니다</p>
       )}
 
       {detailLoading && <Spinner />}
 
-      {/* Detail view */}
       {detail && !detailLoading && (
         <div className="stock-detail">
-          <button className="back-btn" onClick={() => setDetail(null)}>← 검색 결과로</button>
-
-          {/* Header */}
+          <button className="back-btn" onClick={()=>setDetail(null)}>← 검색 결과로</button>
           <div className="sd-head dash-card">
             <div className="sd-head-left">
               <h2 className="sd-name">{detail.name}</h2>
               <div className="sd-badges">
-                <span className="sr-badge sd-market-badge">{detail.market === 'US' ? 'US' : 'KR'}</span>
+                <span className={`sr-badge sd-market-badge ${detail.market==='US'?'us':'kr'}`}>{detail.market==='US'?'US':'KR'}</span>
                 <span className="sd-ticker-tag">{detail.ticker}</span>
               </div>
             </div>
             <div className="sd-head-right">
-              <span className="sd-price">{fmtPrice(price, detail.market)}</span>
-              <span className={`sd-pct ${upDown(pct)}`}>{fmtPct(pct)} {Number(pct) >= 0 ? '▲' : '▼'}</span>
+              <span className="sd-price">{fmtPrice(price,detail.market)}</span>
+              <span className={`sd-pct ${upDown(pct)}`}>{fmtPct(pct)} {Number(pct)>=0?'▲':'▼'}</span>
             </div>
           </div>
-
-          {/* Metrics */}
           <div className="sd-metrics">
-            {detail.market === 'US' && (
-              <>
-                <MetricCard label="당일 고가" value={dayH ? `$${dayH.toFixed(2)}` : 'N/A'} />
-                <MetricCard label="당일 저가" value={dayL ? `$${dayL.toFixed(2)}` : 'N/A'} />
-              </>
-            )}
-            <MetricCard label="52주 고가" value={detail.high52 ? fmtPrice(detail.high52, detail.market) : 'N/A'} />
-            <MetricCard label="52주 저가" value={detail.low52  ? fmtPrice(detail.low52,  detail.market) : 'N/A'} />
-            <MetricCard label="거래량" value={vol ? Number(vol).toLocaleString() : 'N/A'} />
-            <MetricCard label="PER" value={per != null && !isNaN(per) ? Number(per).toFixed(2) : 'N/A'} />
-            <MetricCard label="PBR" value={pbr != null && !isNaN(pbr) ? Number(pbr).toFixed(2) : 'N/A'} />
+            {detail.market==='US'&&<><MetricCard label="당일 고가" value={q.h?`$${q.h.toFixed(2)}`:'N/A'}/><MetricCard label="당일 저가" value={q.l?`$${q.l.toFixed(2)}`:'N/A'}/></>}
+            <MetricCard label="52주 고가" value={detail.high52?fmtPrice(detail.high52,detail.market):'N/A'}/>
+            <MetricCard label="52주 저가" value={detail.low52?fmtPrice(detail.low52,detail.market):'N/A'}/>
+            <MetricCard label="거래량" value={q.volume?Number(q.volume).toLocaleString():'N/A'}/>
+            <MetricCard label="PER" value={q.per!=null&&!isNaN(q.per)?Number(q.per).toFixed(2):'N/A'}/>
+            <MetricCard label="PBR" value={q.pbr!=null&&!isNaN(q.pbr)?Number(q.pbr).toFixed(2):'N/A'}/>
           </div>
-
-          {/* Chart */}
           <div className="dash-card sd-chart">
             <h3 className="card-title">{detail.ticker} 차트 (3개월)</h3>
-            <ChartWidget
-              ticker={detail.ticker}
-              market={detail.market}
-              height={240}
-              type="candlestick"
-              startDate={c3m}
-              endDate={c3me}
-            />
+            <ChartWidget ticker={detail.ticker} market={detail.market} height={240} type="candlestick" startDate={c3m} endDate={c3me} />
           </div>
-
-          {/* News */}
-          {detail.news.length > 0 && (
+          {detail.news.length>0&&(
             <div className="dash-card">
               <h3 className="card-title">관련 뉴스 (Finnhub)</h3>
               <div className="news-feed">
-                {detail.news.map((n, i) => (
+                {detail.news.map((n,i)=>(
                   <a key={i} href={n.url} target="_blank" rel="noopener noreferrer" className="news-item">
                     <div className="news-meta">
                       <span className="news-source">{n.source}</span>
-                      <span className="news-dt">{new Date(n.datetime * 1000).toLocaleDateString('ko-KR')}</span>
+                      <span className="news-dt">{new Date(n.datetime*1000).toLocaleDateString('ko-KR')}</span>
                     </div>
                     <p className="news-headline">{n.headline}</p>
                   </a>
@@ -1389,19 +1290,11 @@ function SearchTab() {
               </div>
             </div>
           )}
-
-          {/* AI Analysis */}
           <div className="dash-card">
             <h3 className="card-title">AI 종목 분석</h3>
             <div className="ai-blocks">
-              <div className="ai-block">
-                <span className="ai-badge qwen">Qwen3 · 수치 분석</span>
-                <p>{detail.ai?.analysis || '분석 데이터 없음'}</p>
-              </div>
-              <div className="ai-block">
-                <span className="ai-badge compound">Tavily · 최신 뉴스 요약</span>
-                <p>{detail.ai?.newsSummary || '뉴스 요약 없음'}</p>
-              </div>
+              <div className="ai-block"><span className="ai-badge qwen">Qwen3 · 수치 분석</span><p>{detail.ai?.analysis||'분석 데이터 없음'}</p></div>
+              <div className="ai-block"><span className="ai-badge compound">Tavily · 최신 뉴스 요약</span><p>{detail.ai?.newsSummary||'뉴스 요약 없음'}</p></div>
             </div>
           </div>
         </div>
