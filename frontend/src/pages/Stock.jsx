@@ -951,6 +951,8 @@ function PortfolioTab({ onSelectStock }) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [newStock, setNewStock]     = useState({ ticker:'', name:'', market:'US', quantity:'', avg_price:'', portfolio_id:'' })
+  const [editingStockId, setEditingStockId] = useState(null)
+  const [editStockData, setEditStockData] = useState({ quantity: '', avg_price: '' })
 
   useEffect(()=>{ loadAll() },[])
 
@@ -989,6 +991,33 @@ function PortfolioTab({ onSelectStock }) {
     if (error) alert('추가 실패: '+error.message)
     else { setShowAddForm(false); setNewStock({ ticker:'', name:'', market:'US', quantity:'', avg_price:'', portfolio_id:portfolios[0]?.id }); loadAll() }
     setIsSubmitting(false)
+  }
+
+  const handleDeleteStock = async stockId => {
+    if (!confirm('정말로 이 종목을 포트폴리오에서 삭제하시겠습니까?')) return
+    const { error } = await supabase.from('portfolio').delete().eq('id', stockId)
+    if (error) alert('삭제 실패: '+error.message)
+    else { if (selected?.id === stockId) setSelected(null); loadAll() }
+  }
+
+  const handleEditStock = stock => {
+    setEditingStockId(stock.id)
+    setEditStockData({ quantity: stock.quantity.toString(), avg_price: stock.avg_price.toString() })
+  }
+
+  const saveStockEdit = async () => {
+    if (!editStockData.quantity || !editStockData.avg_price) { alert('모든 필드를 입력해주세요.'); return }
+    const { error } = await supabase.from('portfolio').update({
+      quantity: Number(editStockData.quantity),
+      avg_price: Number(editStockData.avg_price)
+    }).eq('id', editingStockId)
+    if (error) alert('수정 실패: '+error.message)
+    else { setEditingStockId(null); setEditStockData({ quantity: '', avg_price: '' }); loadAll() }
+  }
+
+  const cancelStockEdit = () => {
+    setEditingStockId(null)
+    setEditStockData({ quantity: '', avg_price: '' })
   }
 
   const saveName = async id => {
@@ -1112,24 +1141,45 @@ function PortfolioTab({ onSelectStock }) {
                           <span className={`pfc-pct ${upDown(s.todayChangePercent)}`} style={{fontSize:'11px',opacity:0.85}}>📅 {fmtPct(s.todayChangePercent)}</span>
                         </div>
                       </div>
-                      {[
-                        {label:'수량',val:`${s.quantity}주`},
-                        {label:'매입가',val:fmtPrice(s.avg_price,s.market)},
-                        {label:'현재가',val:fmtPrice(s.currentPrice,s.market)},
-                        {label:'평가금액',val:fmtPrice(s.quantity*(s.currentPrice||s.avg_price),s.market)},
-                        {label:'평가손익',val:`${s.market==='US'?'$':'₩'}${((s.currentPrice-s.avg_price)*s.quantity).toLocaleString(undefined,{maximumFractionDigits:s.market==='US'?2:0})}`,cls:upDown(s.changePercent)},
-                      ].map(({label,val,cls})=>(
-                        <div key={label} className="pfc-row">
-                          <span className="pfc-label">{label}</span>
-                          <span className={`pfc-val ${cls||''}`}>{val}</span>
+                      {editingStockId === s.id ? (
+                        <div className="pfc-edit-form" onClick={e=>e.stopPropagation()}>
+                          <div className="pfc-row">
+                            <span className="pfc-label">수량</span>
+                            <input type="number" value={editStockData.quantity} onChange={e=>setEditStockData({...editStockData, quantity: e.target.value})} style={{width:'80px',padding:'2px 4px'}} />
+                          </div>
+                          <div className="pfc-row">
+                            <span className="pfc-label">평균단가</span>
+                            <input type="number" step="any" value={editStockData.avg_price} onChange={e=>setEditStockData({...editStockData, avg_price: e.target.value})} style={{width:'80px',padding:'2px 4px'}} />
+                          </div>
+                          <div style={{marginTop:'0.5rem',textAlign:'right',display:'flex',gap:'4px',justifyContent:'flex-end'}}>
+                            <button onClick={saveStockEdit} style={{padding:'2px 6px',fontSize:'11px',background:'#10b981',color:'white',border:'none',borderRadius:'3px'}}>저장</button>
+                            <button onClick={cancelStockEdit} style={{padding:'2px 6px',fontSize:'11px',background:'#6b7280',color:'white',border:'none',borderRadius:'3px'}}>취소</button>
+                          </div>
                         </div>
-                      ))}
-                      <div style={{marginTop:'0.5rem',textAlign:'right'}}>
-                        <span className="earn-today-badge" style={{cursor:'pointer',background:'rgba(37,99,235,0.25)'}}
-                          onClick={ev=>{ev.stopPropagation();onSelectStock?.({ticker:s.ticker,name:s.name||s.ticker,market:s.market})}}>
-                          상세보기 →
-                        </span>
-                      </div>
+                      ) : (
+                        <>
+                          {[
+                            {label:'수량',val:`${s.quantity}주`},
+                            {label:'매입가',val:fmtPrice(s.avg_price,s.market)},
+                            {label:'현재가',val:fmtPrice(s.currentPrice,s.market)},
+                            {label:'평가금액',val:fmtPrice(s.quantity*(s.currentPrice||s.avg_price),s.market)},
+                            {label:'평가손익',val:`${s.market==='US'?'$':'₩'}${((s.currentPrice-s.avg_price)*s.quantity).toLocaleString(undefined,{maximumFractionDigits:s.market==='US'?2:0})}`,cls:upDown(s.changePercent)},
+                          ].map(({label,val,cls})=>(
+                            <div key={label} className="pfc-row">
+                              <span className="pfc-label">{label}</span>
+                              <span className={`pfc-val ${cls||''}`}>{val}</span>
+                            </div>
+                          ))}
+                          <div style={{marginTop:'0.5rem',textAlign:'right',display:'flex',gap:'4px',justifyContent:'flex-end'}}>
+                            <button onClick={e=>{e.stopPropagation();handleEditStock(s)}} style={{padding:'2px 6px',fontSize:'11px',background:'#3b82f6',color:'white',border:'none',borderRadius:'3px'}}>수정</button>
+                            <button onClick={e=>{e.stopPropagation();handleDeleteStock(s.id)}} style={{padding:'2px 6px',fontSize:'11px',background:'#ef4444',color:'white',border:'none',borderRadius:'3px'}}>삭제</button>
+                            <span className="earn-today-badge" style={{cursor:'pointer',background:'rgba(37,99,235,0.25)'}}
+                              onClick={ev=>{ev.stopPropagation();onSelectStock?.({ticker:s.ticker,name:s.name||s.ticker,market:s.market})}}>
+                              상세보기 →
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

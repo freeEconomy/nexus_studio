@@ -575,6 +575,22 @@
 .pfc-val   { font-size: 0.78rem; color: #94a3b8; font-weight: 600; }
 .pfc-eval  { color: #e2e8f0; font-weight: 700; }
 
+.pfc-edit-form {
+  padding: 0.5rem 0;
+}
+.pfc-edit-form input {
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+  color: #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+.pfc-edit-form input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  background: rgba(255,255,255,0.08);
+}
+
 /* Detail panel */
 .pf-detail {
   background: rgba(255,255,255,0.04);
