@@ -10,10 +10,10 @@ const supabase = createClient(
 
 const TABS = [
   { id: 'dashboard', label: '대시보드' },
+  { id: 'portfolio', label: '내 포트폴리오' },
   { id: 'us-stocks', label: '미국주식' },
   { id: 'kr-stocks', label: '국내주식' },
   { id: 'earnings',  label: '실적발표' },
-  { id: 'portfolio', label: '내 포트폴리오' },
   { id: 'search',    label: '종목검색' },
 ]
 
@@ -161,16 +161,27 @@ function PeriodBtns({ value, onChange, options=['1M','3M','6M','1Y'] }) {
 export default function Stock() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [pendingStock, setPendingStock] = useState(null)
+  const [modalStock, setModalStock] = useState(null)
 
   const openDetail = useCallback(stock => {
-    setPendingStock(stock)
-    setActiveTab('search')
-  }, [])
+    if (activeTab === 'search') {
+      setPendingStock(stock)
+      setActiveTab('search')
+    } else {
+      setModalStock(stock)
+    }
+  }, [activeTab])
 
   const handleTabClick = id => {
-    if (id !== 'search') setPendingStock(null)
+    if (id !== 'search') {
+      setPendingStock(null)
+    } else {
+      setModalStock(null)
+    }
     setActiveTab(id)
   }
+
+  const closeModal = useCallback(() => setModalStock(null), [])
 
   const content = {
     dashboard:   <DashboardTab onSelectStock={openDetail} />,
@@ -191,13 +202,11 @@ export default function Stock() {
         ))}
       </nav>
       <div className="stock-body">{content[activeTab]}</div>
+      {modalStock && <StockDetailModal stock={modalStock} onClose={closeModal} />}
     </div>
   )
 }
 
-/* ══════════════════════════════════════════════
-   DASHBOARD TAB
-══════════════════════════════════════════════ */
 function DashboardTab({ onSelectStock }) {
   const [indices, setIndices] = useState([])
   const [portfolio, setPortfolio] = useState([])
@@ -1241,27 +1250,12 @@ function SearchTab({ pendingStock, onClearPending }) {
 
   const selectStock = async stock => {
     setDetailLoading(true); setDetail(null)
-    const ticker = stock.symbol||stock.ticker
-    const market = stock.market
-    const fn = market==='US'?'stock-us-quote':'stock-kr-quote'
-    const [quoteRes,newsRes,aiRes] = await Promise.allSettled([
-      supabase.functions.invoke(fn,{body:{ticker}}),
-      market==='US'?supabase.functions.invoke('stock-us-news',{body:{ticker}}):Promise.resolve({data:{news:[]}}),
-      supabase.functions.invoke('stock-ai-analyze',{body:{ticker,market}}),
-    ])
-    const quote = quoteRes.status==='fulfilled'?(quoteRes.value.data||{}):{}
-    const news  = newsRes.status==='fulfilled'?(newsRes.value.data?.news?.slice(0,5)||[]):[]
-    const ai    = aiRes.status==='fulfilled'?(aiRes.value.data||{}):{}
-    let high52=quote.high52??null, low52=quote.low52??null
-    if (market==='US'&&!high52) {
-      try {
-        const { startDate:s, endDate:e } = calcDateRange('1Y')
-        const { data:cd } = await supabase.functions.invoke('stock-us-chart',{body:{ticker,period:'W',startDate:s,endDate:e}})
-        if (Array.isArray(cd)&&cd.length>0) { high52=Math.max(...cd.map(d=>d.high)); low52=Math.min(...cd.map(d=>d.low)) }
-      } catch {}
+    try {
+      const loaded = await fetchStockDetail(stock)
+      setDetail(loaded)
+    } finally {
+      setDetailLoading(false)
     }
-    setDetail({ ticker, name:stock.description||stock.name||US_NAME_MAP[ticker]||ticker, market, quote, news, ai, high52, low52 })
-    setDetailLoading(false)
   }
 
   const q     = detail?.quote||{}
@@ -1349,6 +1343,133 @@ function SearchTab({ pendingStock, onClearPending }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function StockDetailPanel({ detail, onBack, onClose, isModal }) {
+  const q     = detail?.quote||{}
+  const price = detail?.market==='US'?q.c:q.price
+  const pct   = detail?.market==='US'?q.dp:q.changePercent
+  const { startDate:c3m, endDate:c3me } = calcDateRange('3M')
+
+  return (
+    <div className="stock-detail">
+      {isModal ? (
+        <button className="stock-modal-close" onClick={onClose}>× 닫기</button>
+      ) : (
+        <button className="back-btn" onClick={onBack}>← 검색 결과로</button>
+      )}
+      <div className="sd-head dash-card">
+        <div className="sd-head-left">
+          <h2 className="sd-name">{detail.name}</h2>
+          <div className="sd-badges">
+            <span className={`sr-badge sd-market-badge ${detail.market==='US'?'us':'kr'}`}>{detail.market==='US'?'US':'KR'}</span>
+            <span className="sd-ticker-tag">{detail.ticker}</span>
+          </div>
+        </div>
+        <div className="sd-head-right">
+          <span className="sd-price">{fmtPrice(price,detail.market)}</span>
+          <span className={`sd-pct ${upDown(pct)}`}>{fmtPct(pct)} {Number(pct)>=0?'▲':'▼'}</span>
+        </div>
+      </div>
+      <div className="sd-metrics">
+        {detail.market==='US'&&<><MetricCard label="당일 고가" value={q.h?`$${q.h.toFixed(2)}`:'N/A'}/><MetricCard label="당일 저가" value={q.l?`$${q.l.toFixed(2)}`:'N/A'}/></>}
+        <MetricCard label="52주 고가" value={detail.high52?fmtPrice(detail.high52,detail.market):'N/A'}/>
+        <MetricCard label="52주 저가" value={detail.low52?fmtPrice(detail.low52,detail.market):'N/A'}/>
+        <MetricCard label="거래량" value={q.volume?Number(q.volume).toLocaleString():'N/A'}/>
+        <MetricCard label="PER" value={q.per!=null&&!isNaN(q.per)?Number(q.per).toFixed(2):'N/A'}/>
+        <MetricCard label="PBR" value={q.pbr!=null&&!isNaN(q.pbr)?Number(q.pbr).toFixed(2):'N/A'}/>
+      </div>
+      <div className="dash-card sd-chart">
+        <h3 className="card-title">{detail.ticker} 차트 (3개월)</h3>
+        <ChartWidget ticker={detail.ticker} market={detail.market} height={240} type="candlestick" startDate={c3m} endDate={c3me} />
+      </div>
+      {detail.news.length>0&&(
+        <div className="dash-card">
+          <h3 className="card-title">관련 뉴스 (Finnhub)</h3>
+          <div className="news-feed">
+            {detail.news.map((n,i)=>(
+              <a key={i} href={n.url} target="_blank" rel="noopener noreferrer" className="news-item">
+                <div className="news-meta">
+                  <span className="news-source">{n.source}</span>
+                  <span className="news-dt">{new Date(n.datetime*1000).toLocaleDateString('ko-KR')}</span>
+                </div>
+                <p className="news-headline">{n.headline}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="dash-card">
+        <h3 className="card-title">AI 종목 분석</h3>
+        <div className="ai-blocks">
+          <div className="ai-block"><span className="ai-badge qwen">Qwen3 · 수치 분석</span><p>{detail.ai?.analysis||'분석 데이터 없음'}</p></div>
+          <div className="ai-block"><span className="ai-badge compound">Tavily · 최신 뉴스 요약</span><p>{detail.ai?.newsSummary||'뉴스 요약 없음'}</p></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+async function fetchStockDetail(stock) {
+  const ticker = stock.symbol || stock.ticker
+  const market = stock.market
+  const fn = market === 'US' ? 'stock-us-quote' : 'stock-kr-quote'
+  const [quoteRes, newsRes, aiRes] = await Promise.allSettled([
+    supabase.functions.invoke(fn, { body:{ ticker } }),
+    market === 'US' ? supabase.functions.invoke('stock-us-news', { body:{ ticker } }) : Promise.resolve({ data:{ news:[] } }),
+    supabase.functions.invoke('stock-ai-analyze', { body:{ ticker, market } }),
+  ])
+  const quote = quoteRes.status === 'fulfilled' ? (quoteRes.value.data || {}) : {}
+  const news = newsRes.status === 'fulfilled' ? (newsRes.value.data?.news?.slice(0,5) || []) : []
+  const ai = aiRes.status === 'fulfilled' ? (aiRes.value.data || {}) : {}
+  let high52 = quote.high52 ?? null
+  let low52  = quote.low52 ?? null
+  if (market === 'US' && !high52) {
+    try {
+      const { startDate:s, endDate:e } = calcDateRange('1Y')
+      const { data:cd } = await supabase.functions.invoke('stock-us-chart', { body:{ ticker, period:'W', startDate:s, endDate:e } })
+      if (Array.isArray(cd) && cd.length > 0) {
+        high52 = Math.max(...cd.map(d=>d.high))
+        low52  = Math.min(...cd.map(d=>d.low))
+      }
+    } catch {}
+  }
+  return {
+    ticker,
+    market,
+    quote,
+    news,
+    ai,
+    high52,
+    low52,
+    name: stock.description || stock.name || US_NAME_MAP[ticker] || ticker,
+  }
+}
+
+function StockDetailModal({ stock, onClose }) {
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!stock) return
+    let active = true
+    setLoading(true)
+    setDetail(null)
+    fetchStockDetail(stock)
+      .then(result => { if (active) setDetail(result) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [stock])
+
+  if (!stock) return null
+
+  return (
+    <div className="stock-modal-overlay" onClick={onClose}>
+      <div className="stock-modal" onClick={e => e.stopPropagation()}>
+        {loading ? <Spinner /> : detail ? <StockDetailPanel detail={detail} onClose={onClose} isModal /> : <div className="modal-error">종목 상세정보를 불러올 수 없습니다.</div>}
+      </div>
     </div>
   )
 }

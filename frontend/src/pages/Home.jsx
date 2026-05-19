@@ -9,7 +9,23 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-const FEATURES = [
+const FEATURES = [  
+  {
+    Icon: TrendingUp,
+    title: 'Markets',
+    desc: '미국·한국 주식 실시간 조회, AI 투자 분석, 포트폴리오 관리를 한 곳에서. 섹터 히트맵 & 차트 제공.',
+    path: '/stock',
+    gradient: ['#43e97b', '#38f9d7'],
+    glow: 'rgba(67,233,123,0.3)',
+  },
+  {
+    Icon: MapPin,
+    title: 'Journey',
+    desc: 'AI가 맞춤형 여행 일정, 맛집, 교통편을 자동으로 계획합니다. 장소·날씨·지도를 통합 제공.',
+    path: '/travel-planner',
+    gradient: ['#4facfe', '#00f2fe'],
+    glow: 'rgba(79,172,254,0.3)',
+  },
   {
     Icon: Bot,
     title: 'Nexus Agent',
@@ -26,22 +42,6 @@ const FEATURES = [
     path: '/multi-agent',
     gradient: ['#f093fb', '#f5576c'],
     glow: 'rgba(240,147,251,0.3)',
-  },
-  {
-    Icon: MapPin,
-    title: 'Journey',
-    desc: 'AI가 맞춤형 여행 일정, 맛집, 교통편을 자동으로 계획합니다. 장소·날씨·지도를 통합 제공.',
-    path: '/travel-planner',
-    gradient: ['#4facfe', '#00f2fe'],
-    glow: 'rgba(79,172,254,0.3)',
-  },
-  {
-    Icon: TrendingUp,
-    title: 'Markets',
-    desc: '미국·한국 주식 실시간 조회, AI 투자 분석, 포트폴리오 관리를 한 곳에서. 섹터 히트맵 & 차트 제공.',
-    path: '/stock',
-    gradient: ['#43e97b', '#38f9d7'],
-    glow: 'rgba(67,233,123,0.3)',
   },
 ]
 

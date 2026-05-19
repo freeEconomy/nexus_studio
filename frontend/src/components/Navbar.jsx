@@ -3,10 +3,10 @@ import { NavLink, Link } from 'react-router-dom'
 import './Navbar.css'
 
 const menus = [
+  { path: '/stock', label: 'Markets' },
+  { path: '/travel-planner', label: 'Journey' },
   { path: '/weekly-report', label: 'Nexus Agent' },
   { path: '/multi-agent', label: 'AI Lab' },
-  { path: '/travel-planner', label: 'Journey' },
-  { path: '/stock', label: 'Markets' },
 ]
 
 export default function Navbar() {

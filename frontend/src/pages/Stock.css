@@ -83,6 +83,57 @@
   letter-spacing: -0.5px;
 }
 
+.stock-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.stock-modal {
+  width: min(1080px, 100%);
+  max-height: min(95vh, 1180px);
+  overflow-y: auto;
+  background: rgba(15,23,42,0.98);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 22px;
+  box-shadow: 0 28px 80px rgba(0,0,0,0.35);
+  position: relative;
+}
+
+.stock-modal-close {
+  position: sticky;
+  top: 1rem;
+  right: 1rem;
+  float: right;
+  margin: 0 1rem 0 0;
+  padding: 0.6rem 0.9rem;
+  border: none;
+  background: rgba(30,41,59,0.95);
+  color: #f8fafc;
+  font-size: 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.stock-modal-close:hover {
+  background: rgba(59,130,246,0.95);
+}
+
+.stock-modal .stock-detail {
+  padding: 1.5rem;
+}
+
+.stock-modal .dash-card {
+  margin-bottom: 1rem;
+}
+
 /* ── Utility Colors (Korean convention) ──────── */
 .up   { color: #f87171; }
 .down { color: #60a5fa; }
