@@ -51,7 +51,8 @@ async function fetchInvestorFlow(ticker: string, token: string, appKey: string, 
 
   if (data.rt_cd !== '0') throw new Error(data.msg1 || 'KIS error')
 
-  const o = data.output
+  const o = Array.isArray(data.output) ? data.output[0] : data.output
+  if (!o) return { foreign_buy: 0, foreign_sell: 0, foreign_net: 0, inst_buy: 0, inst_sell: 0, inst_net: 0, indv_buy: 0, indv_sell: 0, indv_net: 0 }
   return {
     // 외국인 순매수량 (양수=순매수, 음수=순매도)
     foreign_buy:  parseInt(o.frgn_buy_qty  || '0', 10),
