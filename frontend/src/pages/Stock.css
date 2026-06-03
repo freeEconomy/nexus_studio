@@ -1745,3 +1745,268 @@
   white-space: nowrap;
 }
 .earn-dart-btn:hover { background: rgba(37,99,235,0.25); }
+
+/* ══════════════════════════════════════════════
+   VALUE PICKS — 저평가 주식 추천
+══════════════════════════════════════════════ */
+.vp-section {
+  border-color: rgba(52, 211, 153, 0.25);
+  background: linear-gradient(135deg, rgba(52,211,153,0.05) 0%, rgba(6,11,26,0.85) 100%);
+}
+
+.vp-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+/* ── Individual Value Pick Card ── */
+.vp-card {
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: border-color 0.15s, background 0.15s;
+}
+.vp-card:hover {
+  border-color: rgba(52,211,153,0.3);
+  background: rgba(52,211,153,0.03);
+}
+
+/* ── 카드 헤더 ── */
+.vp-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  user-select: none;
+}
+.vp-rank {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #34d399;
+  min-width: 2rem;
+  padding-top: 2px;
+}
+.vp-info { flex: 1; min-width: 0; }
+.vp-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.vp-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.vp-ticker {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  font-family: 'Fira Code', monospace;
+}
+.vp-sector-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(52,211,153,0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+.vp-price-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.vp-price {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+.vp-chg {
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 점수 배지 ── */
+.vp-score-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 3.5rem;
+}
+.vp-score-badge {
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.vp-score-sub {
+  font-size: 0.65rem;
+  color: #64748b;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.vp-expand-icon {
+  font-size: 0.7rem;
+  color: #475569;
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
+/* ── 프로그레스 바 ── */
+.vp-progress-track {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+.vp-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── 투자 포인트 요약 ── */
+.vp-reason {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  padding: 0.3rem 0 0.1rem;
+}
+
+/* ── 펼침 상세 영역 ── */
+.vp-detail {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 0.75rem;
+}
+
+/* ── 조건 그리드 ── */
+.vp-criteria-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.6rem;
+}
+.vp-crit-group {
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.vp-crit-group-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+.vp-crit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 3px 0;
+  font-size: 0.78rem;
+}
+.vp-crit-row.pass { color: #e2e8f0; }
+.vp-crit-row.fail { color: #475569; }
+.vp-crit-icon { font-size: 0.75rem; flex-shrink: 0; }
+.vp-crit-label { flex: 1; }
+.vp-crit-value {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #34d399;
+  font-family: 'Fira Code', monospace;
+  background: rgba(52,211,153,0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+/* ── 애널리스트 의견 박스 ── */
+.vp-analyst-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(129,140,248,0.08);
+  border: 1px solid rgba(129,140,248,0.2);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+}
+.vp-analyst-icon { font-size: 1rem; flex-shrink: 0; }
+.vp-analyst-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+.vp-analyst-rating {
+  font-weight: 800;
+  color: #34d399;
+  font-size: 0.85rem;
+}
+.vp-analyst-firm  { color: #94a3b8; }
+.vp-analyst-target { color: #e2e8f0; font-weight: 600; }
+.vp-analyst-upside {
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+.vp-analyst-count { color: #64748b; font-size: 0.75rem; }
+
+/* ── 호재 뉴스 ── */
+.vp-news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.vp-news-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.vp-news-icon { font-size: 0.8rem; flex-shrink: 0; padding-top: 1px; }
+.vp-news-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-news-headline {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+.vp-news-date {
+  font-size: 0.7rem;
+  color: #475569;
+}
+
+/* ── 카드 푸터 ── */
+.vp-footer {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.vp-risk {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 20px;
+}
+.vp-risk.risk-low  { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.25); }
+.vp-risk.risk-mid  { background: rgba(251,191,36,0.12);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+.vp-risk.risk-high { background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.25); }

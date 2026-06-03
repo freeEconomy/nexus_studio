@@ -299,121 +299,182 @@ function DashboardTab({ onSelectStock }) {
 }
 
 /* ══════════════════════════════════════════════
-   RECOMMENDED STOCKS SECTION
+   VALUE PICKS — 저평가 주식 추천
 ══════════════════════════════════════════════ */
-function RecCard({ rec, market }) {
-  const scores = market==='US'
-    ? [{key:'momentum',label:'모멘텀',val:rec.scoreBreakdown?.momentum},{key:'sentiment',label:'뉴스감성',val:rec.scoreBreakdown?.sentiment},{key:'technical',label:'기술지표',val:rec.scoreBreakdown?.technical},{key:'volume',label:'거래량',val:rec.scoreBreakdown?.volume}]
-    : [{key:'momentum',label:'모멘텀',val:rec.scoreBreakdown?.momentum},{key:'institutional',label:'외국인/기관',val:rec.scoreBreakdown?.institutional},{key:'technical',label:'기술지표',val:rec.scoreBreakdown?.technical},{key:'volume',label:'거래량',val:rec.scoreBreakdown?.volume}]
-  const riskLabel = rec.riskLevel||rec.risk
-  const riskClass = riskLabel==='낮음'||riskLabel==='Low'?'low':riskLabel==='높음'||riskLabel==='High'?'high':'mid'
+const CRITERIA_GROUPS = {
+  valuation: { label: '밸류에이션', color: '#818cf8' },
+  earnings:  { label: '실적',       color: '#34d399' },
+  supply:    { label: '수급',        color: '#fbbf24' },
+  quality:   { label: '정성',        color: '#f472b6' },
+}
+
+function ValuePickCard({ pick, market }) {
+  const [expanded, setExpanded] = useState(false)
+  const total = pick.totalCriteria || (market === 'KR' ? 12 : 11)
+  const count = pick.criteriaCount ?? 0
+  const pct   = Math.round((count / total) * 100)
+  const barColor = pct >= 70 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171'
+
+  const criteriaEntries = Object.entries(pick.criteria || {})
+  const grouped = {
+    valuation: criteriaEntries.filter(([k]) => k.startsWith('valuation')),
+    earnings:  criteriaEntries.filter(([k]) => k.startsWith('earnings')),
+    supply:    criteriaEntries.filter(([k]) => k.startsWith('supply')),
+    quality:   criteriaEntries.filter(([k]) => k.startsWith('quality')),
+  }
+
+  const riskClass = pick.risk === 'Low' || pick.risk === '낮음' ? 'low'
+                  : pick.risk === 'High' || pick.risk === '높음' ? 'high' : 'mid'
+
   return (
-    <div className="rec-card">
-      <div className="rec-header">
-        <div className="rec-rank">#{rec.rank}</div>
-        <div className="rec-info">
-          <div className="rec-ticker-row">
-            <span className="rec-name">{rec.name}</span>
-            <span className="rec-ticker">{rec.ticker}</span>
-            <span className="rec-sector-tag">{rec.sector}</span>
+    <div className="vp-card">
+      {/* 헤더 */}
+      <div className="vp-header" onClick={() => setExpanded(e => !e)} style={{cursor:'pointer'}}>
+        <div className="vp-rank">#{pick.rank}</div>
+        <div className="vp-info">
+          <div className="vp-name-row">
+            <span className="vp-name">{pick.name}</span>
+            <span className="vp-ticker">{pick.ticker}</span>
+            <span className="vp-sector-tag">{pick.sector}</span>
           </div>
-        </div>
-        <div className="rec-score-badge">{rec.compositeScore}점</div>
-      </div>
-      <div className="rec-scores">
-        {scores.map(s=>(
-          <div key={s.key} className="rec-score-row">
-            <span className="rec-score-label">{s.label}</span>
-            <div className="rec-score-bar-track"><div className="rec-score-bar-fill" style={{width:`${s.val??50}%`}}/></div>
-            <span className="rec-score-val">{s.val??'—'}</span>
-          </div>
-        ))}
-      </div>
-      {(rec.catalyst||rec.reason) && (
-        <div className="rec-catalyst-box">
-          <div className="rec-catalyst-header">
-            <span className="rec-catalyst-label">⚡ Catalyst</span>
-            {(rec.catalyst_date||rec.updatedAt) && <span className="rec-catalyst-date">{rec.catalyst_date||'진행 중'}</span>}
-          </div>
-          <p className="rec-catalyst-text">{rec.catalyst||rec.reason}</p>
-        </div>
-      )}
-      {(rec.entry_logic||rec.reason) && (
-        <div className="rec-logic-box">
-          <span className="rec-logic-label">💡 투자 포인트</span>
-          <p className="rec-logic-text">{rec.entry_logic||'모멘텀 및 기술적 분석 기반 진입 추천'}</p>
-        </div>
-      )}
-      {rec.keyNews?.length>0 && (
-        <div className="rec-news">
-          {rec.keyNews.slice(0,2).map((n,i)=>(
-            <div key={i} className="rec-news-item"><span className="rec-news-icon">📰</span><span className="rec-news-text">{n}</span></div>
-          ))}
-        </div>
-      )}
-      <div className="rec-footer">
-        <div className="rec-prices">
-          {rec.currentPrice!=null && (
-            <span className="rec-footer-price">
-              <span className="rec-price-label">현재</span>
-              <span className="rec-price-val">{market==='US'?`$${Number(rec.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`:`₩${Number(rec.currentPrice).toLocaleString('ko-KR')}`}</span>
-              {rec.changePercent!=null && <span className={`rec-change-pct ${upDown(rec.changePercent)}`}>{fmtPct(rec.changePercent)}{Number(rec.changePercent)>=0?'▲':'▼'}</span>}
-            </span>
-          )}
-          {rec.currentPrice!=null&&(rec.targetPrice||rec.watch_price)&&<span className="rec-arrow">→</span>}
-          {(rec.targetPrice||rec.watch_price) && (
-            <span className="rec-footer-price">
-              <span className="rec-price-label">{rec.targetPrice?'목표':'진입가'}</span>
-              <span className="rec-price-val rec-target-val">{rec.targetPrice||rec.watch_price}</span>
-            </span>
+          {pick.currentPrice != null && (
+            <div className="vp-price-row">
+              <span className="vp-price">
+                {market === 'US' ? `$${Number(pick.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+                                 : `₩${Number(pick.currentPrice).toLocaleString('ko-KR')}`}
+              </span>
+              {pick.changePercent != null && (
+                <span className={`vp-chg ${upDown(pick.changePercent)}`}>
+                  {fmtPct(pick.changePercent)}{Number(pick.changePercent)>=0?'▲':'▼'}
+                </span>
+              )}
+            </div>
           )}
         </div>
-        {riskLabel && (
-          <div className="rec-footer-right">
-            {rec.time_horizon&&<span className="rec-horizon">{rec.time_horizon}</span>}
-            <span className={`rec-risk risk-${riskClass}`}>{riskLabel}</span>
+        <div className="vp-score-col">
+          <div className="vp-score-badge" style={{color: barColor}}>{count}/{total}</div>
+          <div className="vp-score-sub">조건 충족</div>
+        </div>
+        <span className="vp-expand-icon">{expanded ? '▲' : '▼'}</span>
+      </div>
+
+      {/* 조건 충족 프로그레스 바 */}
+      <div className="vp-progress-track">
+        <div className="vp-progress-fill" style={{width:`${pct}%`, background: barColor}} />
+      </div>
+
+      {/* 항상 보이는: 투자 포인트 요약 */}
+      {pick.reason && (
+        <div className="vp-reason">{pick.reason}</div>
+      )}
+
+      {/* 펼쳐지는 영역 */}
+      {expanded && (
+        <div className="vp-detail">
+          {/* 조건 테이블 */}
+          <div className="vp-criteria-grid">
+            {Object.entries(grouped).map(([groupKey, entries]) => {
+              if (entries.length === 0) return null
+              const grp = CRITERIA_GROUPS[groupKey]
+              return (
+                <div key={groupKey} className="vp-crit-group">
+                  <div className="vp-crit-group-label" style={{color: grp.color}}>{grp.label}</div>
+                  {entries.map(([key, crit]) => (
+                    <div key={key} className={`vp-crit-row ${crit.pass ? 'pass' : 'fail'}`}>
+                      <span className="vp-crit-icon">{crit.pass ? '✅' : '❌'}</span>
+                      <span className="vp-crit-label">{crit.label}</span>
+                      {crit.value && <span className="vp-crit-value">{crit.value}</span>}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
-        )}
+
+          {/* 애널리스트 의견 */}
+          {pick.analystConsensus && (
+            <div className="vp-analyst-box">
+              <span className="vp-analyst-icon">📊</span>
+              <div className="vp-analyst-content">
+                <span className="vp-analyst-rating">{pick.analystConsensus.rating}</span>
+                {pick.analystConsensus.firm && (
+                  <span className="vp-analyst-firm">{pick.analystConsensus.firm}</span>
+                )}
+                {pick.analystConsensus.targetPrice && (
+                  <span className="vp-analyst-target">목표 {pick.analystConsensus.targetPrice}</span>
+                )}
+                {pick.analystConsensus.upside && (
+                  <span className="vp-analyst-upside up">{pick.analystConsensus.upside}</span>
+                )}
+                {pick.analystConsensus.buyCount != null && (
+                  <span className="vp-analyst-count">Buy {pick.analystConsensus.buyCount}/{pick.analystConsensus.totalCount}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 호재 뉴스 */}
+          {Array.isArray(pick.supportingNews) && pick.supportingNews.length > 0 && (
+            <div className="vp-news-list">
+              {pick.supportingNews.slice(0,3).map((n,i) => (
+                <div key={i} className="vp-news-item">
+                  <span className="vp-news-icon">📰</span>
+                  <div className="vp-news-body">
+                    <span className="vp-news-headline">{n.headline}</span>
+                    {n.date && <span className="vp-news-date">{n.date}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="vp-footer">
+        {pick.risk && <span className={`vp-risk risk-${riskClass}`}>{pick.risk}</span>}
       </div>
     </div>
   )
 }
 
-function RecommendedStocksSection({ market }) {
-  const [data, setData]     = useState(null)
-  const [loading,setLoading]= useState(false)
-  const [error, setError]   = useState(null)
-  useEffect(()=>{ loadRecs() },[market])
-  const loadRecs = async () => {
+function ValuePicksSection({ market }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+  useEffect(() => { loadPicks() }, [market])
+
+  const loadPicks = async () => {
     setLoading(true); setError(null)
-    const { data:result, error:err } = await supabase.functions.invoke('stock-recommendations',{ body:{market} })
-    if (err) setError(err.message||'추천 로딩 실패')
+    const { data: result, error: err } = await supabase.functions.invoke('stock-value-picks', { body: { market } })
+    if (err) setError(err.message || '저평가 분석 실패')
     else setData(result)
     setLoading(false)
   }
-  const updatedTime = data?.updatedAt ? new Date(data.updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : null
+
+  const updatedTime = data?.updatedAt
+    ? new Date(data.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
-    <div className="dash-card rec-section">
+    <div className="dash-card vp-section">
       <div className="rec-title-row">
-        <h3 className="card-title">🎯 오늘의 추천종목 TOP 10</h3>
+        <h3 className="card-title">📊 저평가 주식 추천</h3>
         <div className="rec-header-right">
-          {updatedTime&&<span className="rec-updated">업데이트 {updatedTime}</span>}
-          <button className="rec-refresh-btn" onClick={loadRecs} disabled={loading}>{loading?'분석 중...':'새로고침'}</button>
+          {updatedTime && <span className="rec-updated">업데이트 {updatedTime}</span>}
+          <button className="rec-refresh-btn" onClick={loadPicks} disabled={loading}>
+            {loading ? '분석 중...' : '새로고침'}
+          </button>
         </div>
       </div>
-      {data?.marketSummary&&<p className="rec-market-summary">{data.marketSummary}</p>}
-      {data?.hotSectors?.length>0&&(
-        <div className="rec-sectors">
-          <span className="rec-sectors-label">핫 섹터</span>
-          {data.hotSectors.map((s,i)=><span key={i} className="rec-sector-chip">{s}</span>)}
-        </div>
-      )}
-      {loading&&!data&&<Spinner />}
-      {loading&&data&&<p className="rec-refreshing">분석 중...</p>}
-      {error&&<p className="rec-error">{error}</p>}
-      {data?.recommendations?.length>0&&(
-        <div className="rec-cards-list">
-          {data.recommendations.map((rec,i)=><RecCard key={i} rec={rec} market={market} />)}
+      {data?.marketContext && <p className="rec-market-summary">{data.marketContext}</p>}
+      {loading && !data && <Spinner />}
+      {loading && data  && <p className="rec-refreshing">분석 중...</p>}
+      {error && <p className="rec-error">{error}</p>}
+      {data?.picks?.length > 0 && (
+        <div className="vp-cards-list">
+          {data.picks.map((pick, i) => (
+            <ValuePickCard key={i} pick={{ ...pick, totalCriteria: data.totalCriteria }} market={market} />
+          ))}
         </div>
       )}
     </div>
@@ -510,14 +571,14 @@ function USStocksTab({ onSelectStock }) {
                     <span className="news-dt">{dt.toLocaleDateString('ko-KR')}</span>
                     {sentiment&&<span className={`sentiment-badge ${sentiment}`}>{sentiment==='positive'?'긍정':sentiment==='negative'?'부정':'중립'}</span>}
                   </div>
-                  <p className="news-headline">{item.headline}</p>
+                  <p className="news-headline">{item.headline_ko || item.headline}</p>
                 </a>
               )
             })}
           </div>
         </div>
       </>}
-      <RecommendedStocksSection market="US" />
+      <ValuePicksSection market="US" />
     </div>
   )
 }
@@ -605,7 +666,7 @@ function KRStocksTab({ onSelectStock }) {
             : <p className="empty-msg">뉴스 로딩 중...</p>}
           </div>
         </div>
-        <RecommendedStocksSection market="KR" />
+        <ValuePicksSection market="KR" />
       </>)}
       {subTab==='flow' && <KRFlowView onSelectStock={onSelectStock} />}
     </div>
@@ -1328,7 +1389,7 @@ function SearchTab({ pendingStock, onClearPending }) {
                       <span className="news-source">{n.source}</span>
                       <span className="news-dt">{new Date(n.datetime*1000).toLocaleDateString('ko-KR')}</span>
                     </div>
-                    <p className="news-headline">{n.headline}</p>
+                    <p className="news-headline">{n.headline_ko || n.headline}</p>
                   </a>
                 ))}
               </div>
